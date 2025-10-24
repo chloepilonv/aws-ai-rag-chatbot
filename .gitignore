@@ -1,0 +1,18 @@
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+.env/
+.env*/
+
+# RAG / FAISS index
+index-faiss/
+*.faiss
+*.pkl
+*.npy
+

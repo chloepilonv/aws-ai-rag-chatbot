@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+langchain
+langchain_openai
+langchain==1.0.2
+langchain-openai==1.0.1
+langchain-community==0.4
+openai==2.6.0
+langchain-community
+langchain-text-splitters
+faiss-cpu
+python-dotenv
+html2text
+uvicorn[standard]
+beautifulsoup4
+gradio
