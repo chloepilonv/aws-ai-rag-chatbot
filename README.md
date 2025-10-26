@@ -6,7 +6,7 @@ Built with **FastAPI**, **FAISS**, and **Gradio** for a lightweight local assist
 
 ---
 
-## 🚀 How to Run
+## How to Run
 
 ### 1. Create a virtual environment
 ```bash
@@ -26,7 +26,7 @@ pip3 install -r requirements.txt
 
 ---
 
-## 💬 Description
+## Description
 
 This chatbot:
 - Uses a **RAG pipeline** to combine LLM reasoning with document retrieval.
@@ -35,7 +35,7 @@ This chatbot:
 
 ---
 
-🧩 **Stack**
+**Stack**
 - Python 3.11+
 - FastAPI
 - FAISS
@@ -43,3 +43,5 @@ This chatbot:
 - OpenAI / compatible LLM
 - Gradio
 
+**License**
+Under MIT license, see LICENSE.
