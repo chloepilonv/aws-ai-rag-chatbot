@@ -14,3 +14,5 @@ html2text
 uvicorn[standard]
 beautifulsoup4
 gradio
+lxml
+GitPython
