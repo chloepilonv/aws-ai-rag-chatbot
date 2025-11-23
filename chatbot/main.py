@@ -64,8 +64,6 @@ def _format_docs(docs: List[Any]) -> str:
 
     return "\n\n---\n\n".join(blocks)
 
-
-
 SYSTEM_PROMPT = f"""
 You are an internal company assistant.
 
@@ -102,7 +100,7 @@ llm = ChatOpenAI(model=OPENAI_MODEL, temperature=0)
 
 rag_inputs = RunnableParallel(
     context=lambda x: _format_docs(retriever.invoke(x["question"])),
-    question=RunnablePassthrough(),
+    question=lambda x: x["question"],
 )
 
 rag_chain = rag_inputs | PROMPT | llm
@@ -114,6 +112,7 @@ app = FastAPI(title=f"{COMPANY_NAME} RAG Chatbot")
 
 class Ask(BaseModel):
     question: str
+    history: List[List[str]] = []  # [[user_msg, assistant_msg], ...]
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -121,17 +120,39 @@ def root():
     return "<h1>It works 🎉</h1><p>Try <a href='/docs'>/docs</a></p>"
 
 
+def _format_history(history: List[List[str]]) -> str:
+    """Format conversation history for the prompt."""
+    if not history:
+        return ""
+    lines = []
+    for user_msg, assistant_msg in history:
+        lines.append(f"User: {user_msg}")
+        lines.append(f"Assistant: {assistant_msg}")
+    return "\n".join(lines)
+
+
 @app.post("/ask")
 def ask(payload: Ask) -> Dict[str, Any]:
-    cb = ConsoleCallbackHandler()
-    result = rag_chain.invoke(
-        {"question": payload.question}, config={"callbacks": [cb]}
-    )
+    try:
+        cb = ConsoleCallbackHandler()
 
-    answer = (
-        result if isinstance(result, str) else getattr(result, "content", str(result))
-    )
-    return {"answer": answer}
+        # Build prompt with history
+        history_text = _format_history(payload.history)
+        question_with_history = payload.question
+        if history_text:
+            question_with_history = f"Previous conversation:\n{history_text}\n\nCurrent question: {payload.question}"
+
+        result = rag_chain.invoke(
+            {"question": question_with_history}, config={"callbacks": [cb]}
+        )
+
+        answer = (
+            result if isinstance(result, str) else getattr(result, "content", str(result))
+        )
+        return {"answer": answer}
+    except Exception as e:
+        print(f"[ERROR] /ask failed: {e}")
+        return {"answer": f"Error processing request: {str(e)}"}
 
 
 @app.get("/health")
