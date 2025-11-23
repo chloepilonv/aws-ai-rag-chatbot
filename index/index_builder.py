@@ -22,7 +22,7 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = "gpt-4.1"
 EMBED_MODEL = "text-embedding-3-large"
-INDEX_PATH = "./index-faiss"  # Store index in /index-faiss
+INDEX_PATH = os.path.join(os.path.dirname(__file__), "index-faiss")
 
 MAX_DEPTH = 3
 TIMEOUT_SEC = 30
@@ -78,7 +78,15 @@ def _crawl_sites(start_urls: List[str]) -> List[Any]:
             d.metadata["source"] = d.metadata.get("source") or root
             d.metadata.setdefault("source_type", "web")
 
+        print(f"[crawler] {root}: got {len(text_docs)} docs")
+
+        if "blog" in root:
+            print("[crawler] sample blog sources:")
+            for d in text_docs[:20]:
+                print("   ", d.metadata.get("source"))
+
         all_docs.extend(text_docs)
+
 
     # Deduplicate
     seen = set()
@@ -107,8 +115,7 @@ def _load_git_repos() -> List[Any]:
             clone_url=clone_url,
             repo_path=local_path,
             branch=branch,
-            # If you ever want to restrict files, uncomment below:
-            # file_filter=lambda p: p.endswith(".md") or p.endswith(".py"),
+            file_filter=lambda p: p.endswith(".md") or p.endswith(".py"),
         )
 
         docs = loader.load()

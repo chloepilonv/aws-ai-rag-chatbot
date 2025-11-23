@@ -23,8 +23,8 @@ from index.index_builder import EMBED_MODEL, OPENAI_MODEL
 
 
 INDEX_PATH = "index/index-faiss"
-COMPANY_SUPPORT_EMAIL = "support@yourcompany.com"
-COMPANY_NAME = "my_company"
+COMPANY_SUPPORT_EMAIL = "support-compute@qarnot.com"
+COMPANY_NAME = "Qarnot"
 
 load_dotenv()
 
@@ -37,17 +37,33 @@ vectorstore = FAISS.load_local(
     allow_dangerous_deserialization=True,
 )
 retriever = vectorstore.as_retriever(
-    search_type="mmr",
-    search_kwargs={"k": 4, "fetch_k": 20, "lambda_mult": 0.7},
+    search_type="similarity",
+    search_kwargs={"k": 8},
 )
 
 # ------------------ RAG CHAIN ------------------
 def _format_docs(docs: List[Any]) -> str:
+    import re
+
+    def clean_footnotes(text: str) -> str:
+        # Remove trailing [number] or sequences like [3][4][5]
+        return re.sub(r"\s*\[\d+\]", "", text)
+
     blocks = []
     for i, d in enumerate(docs, start=1):
         src = d.metadata.get("source", "unknown")
-        blocks.append(f"[{i}] ({src})\n{d.page_content}")
+        src_type = d.metadata.get("source_type", "web")
+
+        cleaned = clean_footnotes(d.page_content)
+
+        # Mark git sources as code examples
+        if src_type == "git":
+            blocks.append(f"[{i}] (CODE EXAMPLE from {src})\n```python\n{cleaned}\n```")
+        else:
+            blocks.append(f"[{i}] ({src})\n{cleaned}")
+
     return "\n\n---\n\n".join(blocks)
+
 
 
 SYSTEM_PROMPT = f"""
@@ -61,10 +77,14 @@ You are an internal company assistant.
 
 2. For product / documentation / technical questions:
    - Answer ONLY from the provided context.
-   - If the context contains a relevant code example, always include it in the answer as a fenced code block (```language). Don’t invent code that isn’t in the context.
+   - The context contains two types of sources:
+     * Web documentation: explanations and tutorials
+     * CODE EXAMPLE sources: complete, working Python scripts from our GitHub repo
+   - When the user asks "how to" do something, ALWAYS include the full code from CODE EXAMPLE sources. These are real, tested scripts that users can copy and run.
+   - Don't just reference filenames - show the actual code content.
    - If the answer is not in the context, say you don't know and suggest contacting support at {COMPANY_SUPPORT_EMAIL}.
    - Cite sources using [n] and list them under "Sources" with their URL.
-   - Do not fabricate sources.
+   - Do not fabricate sources or code.
 """
 
 PROMPT = ChatPromptTemplate.from_messages(

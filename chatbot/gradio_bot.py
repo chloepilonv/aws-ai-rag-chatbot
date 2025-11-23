@@ -21,7 +21,7 @@ def ask_llm(message, history):
 chat = gr.ChatInterface(
     fn=ask_llm,
     title="Your Internal Assistant",
-    description="Ask anything...",
+    description="Make sure to specify if you are using the platforms (Tasq-HPC) or the Python SDK.",
 )
 
 

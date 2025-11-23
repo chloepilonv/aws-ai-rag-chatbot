@@ -13,7 +13,7 @@ GRADIO_PID=$!
 
 echo ""
 echo "🌐 FastAPI docs:  http://localhost:8000/docs"
-echo "💻 Your Chatbot ! :     http://localhost:7860"
+echo "💻 Your Chatbot:     http://localhost:7860"
 echo ""
 
 trap "echo '🛑 Shutting down...'; kill $FASTAPI_PID $GRADIO_PID" SIGINT SIGTERM
