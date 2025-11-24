@@ -29,6 +29,9 @@ COPY chatbot/ ./chatbot/
 COPY index/ ./index/
 COPY run.sh .
 
+# Create /data directory for SQLite database (will be mounted as volume)
+RUN mkdir -p /data
+
 # Ensure script is executable
 RUN chmod +x run.sh
 

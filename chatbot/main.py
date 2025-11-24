@@ -7,6 +7,7 @@ retrieves relevant documents, and uses an LLM to generate answers.
 """
 
 import os
+import time
 from typing import List, Any, Dict
 
 from fastapi import FastAPI
@@ -25,6 +26,9 @@ from langchain_community.vectorstores import FAISS
 
 # Import shared constants from index_builder
 from index.index_builder import EMBED_MODEL, OPENAI_MODEL
+
+# Import logging module
+from chatbot.logger import log_conversation, add_feedback, get_conversations, get_stats
 
 
 # ------------------ CONFIG ------------------
@@ -65,6 +69,26 @@ retriever = vectorstore.as_retriever(
 
 
 # ------------------ RAG CHAIN ------------------
+def _extract_sources(docs: List[Any]) -> List[str]:
+    """
+    Extract unique source URLs from retrieved documents.
+
+    Args:
+        docs: List of retrieved Document objects with metadata.
+
+    Returns:
+        List of unique source URLs.
+    """
+    sources = []
+    seen = set()
+    for d in docs:
+        src = d.metadata.get("source", "unknown")
+        if src not in seen:
+            sources.append(src)
+            seen.add(src)
+    return sources
+
+
 def _format_docs(docs: List[Any]) -> str:
     """
     Format retrieved documents into a context string for the LLM.
@@ -176,13 +200,17 @@ def ask(payload: Ask) -> Dict[str, Any]:
     2. Retrieves relevant documents from the vector store
     3. Formats context and sends to the LLM
     4. Returns the generated answer
+    5. Logs the conversation to SQLite database
 
     Args:
         payload: Request containing question and optional history.
 
     Returns:
-        Dictionary with "answer" key containing the LLM's response.
+        Dictionary with "answer" and "conversation_id" keys.
     """
+    start_time = time.time()
+    conversation_id = None
+
     try:
         # Callback handler for logging LLM interactions to console
         cb = ConsoleCallbackHandler()
@@ -193,6 +221,10 @@ def ask(payload: Ask) -> Dict[str, Any]:
         if history_text:
             question_with_history = f"Previous conversation:\n{history_text}\n\nCurrent question: {payload.question}"
 
+        # Retrieve documents for context
+        docs = retriever.invoke(question_with_history)
+        sources = _extract_sources(docs)
+
         # Run the RAG chain
         result = rag_chain.invoke(
             {"question": question_with_history}, config={"callbacks": [cb]}
@@ -202,10 +234,26 @@ def ask(payload: Ask) -> Dict[str, Any]:
         answer = (
             result if isinstance(result, str) else getattr(result, "content", str(result))
         )
-        return {"answer": answer}
+
+        # Calculate response time
+        response_time_ms = int((time.time() - start_time) * 1000)
+
+        # Log the conversation
+        try:
+            conversation_id = log_conversation(
+                question=payload.question,
+                answer=answer,
+                sources=sources,
+                response_time_ms=response_time_ms
+            )
+        except Exception as log_error:
+            print(f"[WARNING] Failed to log conversation: {log_error}")
+
+        return {"answer": answer, "conversation_id": conversation_id}
+
     except Exception as e:
         print(f"[ERROR] /ask failed: {e}")
-        return {"answer": f"Error processing request: {str(e)}"}
+        return {"answer": f"Error processing request: {str(e)}", "conversation_id": None}
 
 
 @app.post("/ask/stream")
@@ -214,6 +262,7 @@ async def ask_stream(payload: Ask):
     Streaming endpoint for asking questions to the chatbot.
 
     Same as /ask but streams the response token by token for better UX.
+    Also logs the conversation to SQLite database after streaming completes.
 
     Args:
         payload: Request containing question and optional history.
@@ -221,7 +270,10 @@ async def ask_stream(payload: Ask):
     Returns:
         StreamingResponse with the LLM's response streamed as text.
     """
+    start_time = time.time()
+
     async def generate():
+        answer_chunks = []
         try:
             # Prepend conversation history to the question if available
             history_text = _format_history(payload.history)
@@ -229,23 +281,51 @@ async def ask_stream(payload: Ask):
             if history_text:
                 question_with_history = f"Previous conversation:\n{history_text}\n\nCurrent question: {payload.question}"
 
-            # Get context (non-streaming part)
-            context = _format_docs(retriever.invoke(question_with_history))
+            # Get context and extract sources
+            docs = retriever.invoke(question_with_history)
+            sources = _extract_sources(docs)
+            context = _format_docs(docs)
 
             # Build the streaming chain
             rag_chain_stream = PROMPT | llm_streaming
 
-            # Stream the response
+            # Stream the response and collect chunks
             async for chunk in rag_chain_stream.astream({
                 "question": question_with_history,
                 "context": context,
             }):
                 content = chunk.content if hasattr(chunk, "content") else str(chunk)
                 if content:
+                    answer_chunks.append(content)
                     yield content
 
+            # After streaming completes, log the conversation
+            full_answer = "".join(answer_chunks)
+            response_time_ms = int((time.time() - start_time) * 1000)
+
+            try:
+                log_conversation(
+                    question=payload.question,
+                    answer=full_answer,
+                    sources=sources,
+                    response_time_ms=response_time_ms
+                )
+            except Exception as log_error:
+                print(f"[WARNING] Failed to log conversation: {log_error}")
+
         except Exception as e:
-            yield f"\n\n❌ Error: {str(e)}"
+            error_msg = f"\n\n❌ Error: {str(e)}"
+            yield error_msg
+            # Log error cases too
+            try:
+                log_conversation(
+                    question=payload.question,
+                    answer=error_msg,
+                    sources=[],
+                    response_time_ms=int((time.time() - start_time) * 1000)
+                )
+            except:
+                pass
 
     return StreamingResponse(generate(), media_type="text/plain")
 
@@ -254,3 +334,72 @@ async def ask_stream(payload: Ask):
 def health():
     """Health check endpoint for container orchestration."""
     return {"status": "ok"}
+
+
+# ------------------ FEEDBACK ENDPOINTS ------------------
+
+class Feedback(BaseModel):
+    """Request model for the /feedback endpoint."""
+    conversation_id: int
+    feedback: int  # 1 for thumbs up, -1 for thumbs down
+    comment: str = None
+
+
+@app.post("/feedback")
+def submit_feedback(payload: Feedback):
+    """
+    Submit user feedback for a conversation.
+
+    Args:
+        payload: Feedback data including conversation_id, feedback score, and optional comment.
+
+    Returns:
+        Success status.
+    """
+    try:
+        add_feedback(
+            conversation_id=payload.conversation_id,
+            feedback=payload.feedback,
+            comment=payload.comment
+        )
+        return {"status": "success", "message": "Feedback recorded"}
+    except Exception as e:
+        print(f"[ERROR] /feedback failed: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.get("/feedback/conversations")
+def export_conversations(limit: int = 100, offset: int = 0, feedback_only: int = None):
+    """
+    Export logged conversations for analysis.
+
+    Args:
+        limit: Maximum number of conversations to return (default: 100)
+        offset: Number of conversations to skip (default: 0)
+        feedback_only: Filter by feedback score (1 for positive, -1 for negative, None for all)
+
+    Returns:
+        List of conversation records.
+    """
+    try:
+        conversations = get_conversations(limit=limit, offset=offset, feedback_only=feedback_only)
+        return {"conversations": conversations, "count": len(conversations)}
+    except Exception as e:
+        print(f"[ERROR] /feedback/conversations failed: {e}")
+        return {"conversations": [], "count": 0, "error": str(e)}
+
+
+@app.get("/feedback/stats")
+def feedback_stats():
+    """
+    Get statistics about logged conversations and feedback.
+
+    Returns:
+        Dictionary with stats (total conversations, feedback counts, avg response time).
+    """
+    try:
+        stats = get_stats()
+        return stats
+    except Exception as e:
+        print(f"[ERROR] /feedback/stats failed: {e}")
+        return {"error": str(e)}
