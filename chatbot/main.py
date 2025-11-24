@@ -1,3 +1,11 @@
+"""
+FastAPI Backend for the RAG Chatbot.
+
+This module provides the REST API that handles user questions using
+retrieval-augmented generation (RAG). It loads a FAISS vector index,
+retrieves relevant documents, and uses an LLM to generate answers.
+"""
+
 import os
 from typing import List, Any, Dict
 
@@ -6,15 +14,12 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-# Models
+# LangChain models
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
-# RAG
+# LangChain RAG components
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import (
-    RunnableParallel,
-    RunnablePassthrough,
-)
+from langchain_core.runnables import RunnableParallel
 from langchain_core.tracers.stdout import ConsoleCallbackHandler
 from langchain_community.vectorstores import FAISS
 
@@ -22,31 +27,53 @@ from langchain_community.vectorstores import FAISS
 from index.index_builder import EMBED_MODEL, OPENAI_MODEL
 
 
-INDEX_PATH = "index/index-faiss"
+# ------------------ CONFIG ------------------
+INDEX_PATH = "index/index-faiss"  # Path to the FAISS vector index
 COMPANY_SUPPORT_EMAIL = "support-compute@qarnot.com"
 COMPANY_NAME = "Qarnot"
 
+# Load environment variables from .env file
 load_dotenv()
 
 
 # ------------------ LOAD INDEX ------------------
+# Initialize embeddings model (must match the one used during indexing)
 embeddings = OpenAIEmbeddings(model=EMBED_MODEL)
+
+# Load the FAISS vector store from disk
 vectorstore = FAISS.load_local(
     INDEX_PATH,
     embeddings,
-    allow_dangerous_deserialization=True,
+    allow_dangerous_deserialization=True,  # Required for loading pickled data
 )
+
+# Create a retriever that returns the top 8 most similar documents
 retriever = vectorstore.as_retriever(
     search_type="similarity",
     search_kwargs={"k": 8},
 )
 
+
 # ------------------ RAG CHAIN ------------------
 def _format_docs(docs: List[Any]) -> str:
+    """
+    Format retrieved documents into a context string for the LLM.
+
+    Processes each document by:
+    - Cleaning footnote references (e.g., [1], [2])
+    - Marking git sources as CODE EXAMPLE with Python syntax highlighting
+    - Adding source attribution for each document
+
+    Args:
+        docs: List of retrieved Document objects with page_content and metadata.
+
+    Returns:
+        Formatted context string with numbered sources and content.
+    """
     import re
 
     def clean_footnotes(text: str) -> str:
-        # Remove trailing [number] or sequences like [3][4][5]
+        """Remove footnote references like [1], [2], [3][4][5] from text."""
         return re.sub(r"\s*\[\d+\]", "", text)
 
     blocks = []
@@ -56,7 +83,7 @@ def _format_docs(docs: List[Any]) -> str:
 
         cleaned = clean_footnotes(d.page_content)
 
-        # Mark git sources as code examples
+        # Mark git sources as code examples with Python syntax highlighting
         if src_type == "git":
             blocks.append(f"[{i}] (CODE EXAMPLE from {src})\n```python\n{cleaned}\n```")
         else:
@@ -64,6 +91,8 @@ def _format_docs(docs: List[Any]) -> str:
 
     return "\n\n---\n\n".join(blocks)
 
+
+# System prompt that instructs the LLM how to behave
 SYSTEM_PROMPT = f"""
 You are an internal company assistant.
 
@@ -85,6 +114,7 @@ You are an internal company assistant.
    - Do not fabricate sources or code.
 """
 
+# Chat prompt template combining system instructions and user question
 PROMPT = ChatPromptTemplate.from_messages(
     [
         ("system", SYSTEM_PROMPT),
@@ -96,32 +126,46 @@ PROMPT = ChatPromptTemplate.from_messages(
     ]
 )
 
+# Initialize the LLM with zero temperature for deterministic responses
 llm = ChatOpenAI(model=OPENAI_MODEL, temperature=0)
 
+# RAG chain: retrieve context and pass question, then format and send to LLM
 rag_inputs = RunnableParallel(
     context=lambda x: _format_docs(retriever.invoke(x["question"])),
     question=lambda x: x["question"],
 )
 
+# Complete RAG chain: inputs -> prompt -> LLM
 rag_chain = rag_inputs | PROMPT | llm
 
 
-# ------------------ FASTAPI ------------------
+# ------------------ FASTAPI APP ------------------
 app = FastAPI(title=f"{COMPANY_NAME} RAG Chatbot")
 
 
 class Ask(BaseModel):
-    question: str
-    history: List[List[str]] = []  # [[user_msg, assistant_msg], ...]
+    """Request model for the /ask endpoint."""
+    question: str  # The user's question
+    history: List[List[str]] = []  # Conversation history: [[user_msg, assistant_msg], ...]
 
 
 @app.get("/", response_class=HTMLResponse)
 def root():
+    """Root endpoint - displays a simple welcome page."""
     return "<h1>It works 🎉</h1><p>Try <a href='/docs'>/docs</a></p>"
 
 
 def _format_history(history: List[List[str]]) -> str:
-    """Format conversation history for the prompt."""
+    """
+    Format conversation history into a string for the LLM prompt.
+
+    Args:
+        history: List of [user_message, assistant_message] pairs.
+
+    Returns:
+        Formatted string with labeled user/assistant messages,
+        or empty string if no history.
+    """
     if not history:
         return ""
     lines = []
@@ -133,19 +177,37 @@ def _format_history(history: List[List[str]]) -> str:
 
 @app.post("/ask")
 def ask(payload: Ask) -> Dict[str, Any]:
+    """
+    Main endpoint for asking questions to the chatbot.
+
+    Processes the user's question through the RAG pipeline:
+    1. Optionally prepends conversation history for context
+    2. Retrieves relevant documents from the vector store
+    3. Formats context and sends to the LLM
+    4. Returns the generated answer
+
+    Args:
+        payload: Request containing question and optional history.
+
+    Returns:
+        Dictionary with "answer" key containing the LLM's response.
+    """
     try:
+        # Callback handler for logging LLM interactions to console
         cb = ConsoleCallbackHandler()
 
-        # Build prompt with history
+        # Prepend conversation history to the question if available
         history_text = _format_history(payload.history)
         question_with_history = payload.question
         if history_text:
             question_with_history = f"Previous conversation:\n{history_text}\n\nCurrent question: {payload.question}"
 
+        # Run the RAG chain
         result = rag_chain.invoke(
             {"question": question_with_history}, config={"callbacks": [cb]}
         )
 
+        # Extract the answer content from the LLM response
         answer = (
             result if isinstance(result, str) else getattr(result, "content", str(result))
         )
@@ -157,4 +219,5 @@ def ask(payload: Ask) -> Dict[str, Any]:
 
 @app.get("/health")
 def health():
+    """Health check endpoint for container orchestration."""
     return {"status": "ok"}

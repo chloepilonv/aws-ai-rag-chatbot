@@ -1,5 +1,15 @@
+"""
+Index Builder for the RAG Chatbot.
+
+This module crawls web documentation and Git repositories, processes the content,
+and builds a FAISS vector index for semantic search. The index is used by the
+chatbot to retrieve relevant documents when answering user questions.
+
+Usage:
+    python index/index_builder.py
+"""
+
 import os
-import re
 import tempfile
 from typing import List, Any
 
@@ -13,29 +23,33 @@ from langchain_community.document_loaders import (
 from langchain_community.document_transformers import Html2TextTransformer
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from bs4 import BeautifulSoup
-
-
+# Load environment variables from .env file
 load_dotenv()
 
+
 # ------------------ CONFIG ------------------
+# OpenAI API configuration
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_MODEL = "gpt-4.1"
-EMBED_MODEL = "text-embedding-3-large"
+OPENAI_MODEL = "gpt-4.1"  # LLM model for chat responses
+EMBED_MODEL = "text-embedding-3-large"  # Embedding model for vectorization
+
+# Index storage path (relative to this file's directory)
 INDEX_PATH = os.path.join(os.path.dirname(__file__), "index-faiss")
 
-MAX_DEPTH = 3
-TIMEOUT_SEC = 30
-USE_ASYNC = True
-PREVENT_OUTSIDE = True
+# Crawler settings
+MAX_DEPTH = 3  # Maximum depth for recursive URL crawling
+TIMEOUT_SEC = 30  # Timeout for HTTP requests
+USE_ASYNC = True  # Whether to use async crawling (currently disabled)
+PREVENT_OUTSIDE = True  # Prevent crawling outside the starting domain
 
+# URLs to crawl for documentation
 START_URLS = [
     "https://qarnot.com/documentation/overview",
     "https://doc.tasq.qarnot.com/documentation/sdk-python/",
     "https://qarnot.com/blog",
 ]
 
-# Git repos to include in the index
+# Git repositories containing code examples to index
 GIT_REPOS = [
     {
         "clone_url": "https://github.com/qarnot/blog-samples.git",
@@ -44,11 +58,17 @@ GIT_REPOS = [
 ]
 
 
-
-
-# ------------------ HELPERS ------------------
-
+# ------------------ CRAWLING HELPERS ------------------
 def _crawl_one(url_root: str) -> List[Any]:
+    """
+    Crawl a single URL recursively up to MAX_DEPTH levels.
+
+    Args:
+        url_root: The starting URL to crawl.
+
+    Returns:
+        List of Document objects containing the crawled HTML content.
+    """
     print(
         f"[crawler] root={url_root} depth={MAX_DEPTH} "
         f"prevent_outside={PREVENT_OUTSIDE} use_async_env={USE_ASYNC}"
@@ -57,7 +77,7 @@ def _crawl_one(url_root: str) -> List[Any]:
     loader = RecursiveUrlLoader(
         url=url_root,
         max_depth=MAX_DEPTH,
-        use_async=False,  # you can wire USE_ASYNC here if you want
+        use_async=False,  # Async disabled for stability
         timeout=TIMEOUT_SEC,
         prevent_outside=PREVENT_OUTSIDE,
     )
@@ -68,18 +88,38 @@ def _crawl_one(url_root: str) -> List[Any]:
 
 
 def _crawl_sites(start_urls: List[str]) -> List[Any]:
+    """
+    Crawl multiple websites and convert HTML to plain text.
+
+    Processes each URL by:
+    1. Recursively crawling all pages
+    2. Converting HTML to markdown/text
+    3. Adding source metadata
+    4. Deduplicating based on content hash
+
+    Args:
+        start_urls: List of root URLs to crawl.
+
+    Returns:
+        Deduplicated list of Document objects with text content.
+    """
     all_docs = []
 
     for root in start_urls:
+        # Crawl the site
         raw_docs = _crawl_one(root)
 
+        # Convert HTML to plain text
         text_docs = Html2TextTransformer().transform_documents(raw_docs)
+
+        # Add metadata to each document
         for d in text_docs:
             d.metadata["source"] = d.metadata.get("source") or root
             d.metadata.setdefault("source_type", "web")
 
         print(f"[crawler] {root}: got {len(text_docs)} docs")
 
+        # Log sample blog sources for debugging
         if "blog" in root:
             print("[crawler] sample blog sources:")
             for d in text_docs[:20]:
@@ -87,8 +127,7 @@ def _crawl_sites(start_urls: List[str]) -> List[Any]:
 
         all_docs.extend(text_docs)
 
-
-    # Deduplicate
+    # Deduplicate documents by source URL and content hash
     seen = set()
     deduped = []
     for d in all_docs:
@@ -101,16 +140,30 @@ def _crawl_sites(start_urls: List[str]) -> List[Any]:
     return deduped
 
 
+# ------------------ GIT LOADING HELPERS ------------------
 def _load_git_repos() -> List[Any]:
+    """
+    Clone and load documents from configured Git repositories.
+
+    Clones each repository to a temporary directory and loads
+    markdown (.md) and Python (.py) files as documents.
+    These are marked with source_type="git" to identify them
+    as code examples in the RAG pipeline.
+
+    Returns:
+        List of Document objects from all Git repositories.
+    """
     repo_docs: List[Any] = []
 
     for repo in GIT_REPOS:
         clone_url = repo["clone_url"]
         branch = repo.get("branch", "main")
 
+        # Clone to a temporary directory
         local_path = tempfile.mkdtemp(prefix="qarnot_repo_")
         print(f"[git] cloning {clone_url} (branch={branch}) into {local_path}")
 
+        # Load only .md and .py files from the repository
         loader = GitLoader(
             clone_url=clone_url,
             repo_path=local_path,
@@ -121,8 +174,8 @@ def _load_git_repos() -> List[Any]:
         docs = loader.load()
         print(f"[git] loaded {len(docs)} docs from {clone_url}")
 
+        # Add metadata to identify these as git/code sources
         for d in docs:
-            # Ensure we have a meaningful source and type
             d.metadata["source"] = d.metadata.get("source") or clone_url
             d.metadata.setdefault("source_type", "git")
 
@@ -132,13 +185,30 @@ def _load_git_repos() -> List[Any]:
     return repo_docs
 
 
+# ------------------ CHUNKING HELPERS ------------------
 def _chunk_docs(docs: List[Any]) -> List[Any]:
+    """
+    Split documents into smaller chunks for embedding.
+
+    Uses recursive character splitting to break documents into
+    chunks of ~1000 characters with 150 character overlap.
+    Overlap ensures context is preserved across chunk boundaries.
+
+    Args:
+        docs: List of Document objects to chunk.
+
+    Returns:
+        List of chunked Document objects with preserved metadata.
+    """
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=150,
-        separators=["\n\n", "\n", " ", ""],
+        chunk_size=1000,  # Target size for each chunk
+        chunk_overlap=150,  # Overlap between chunks for context continuity
+        separators=["\n\n", "\n", " ", ""],  # Split priority: paragraph > line > word > char
     )
+
     chunks = splitter.split_documents(docs)
+
+    # Ensure each chunk has source metadata
     for d in chunks:
         d.metadata["source"] = d.metadata.get("source", "unknown")
 
@@ -148,22 +218,39 @@ def _chunk_docs(docs: List[Any]) -> List[Any]:
 
 # ------------------ BUILD INDEX ------------------
 def build_index() -> None:
+    """
+    Build the complete FAISS vector index.
+
+    Pipeline:
+    1. Crawl web documentation from START_URLS
+    2. Load code examples from GIT_REPOS
+    3. Merge all documents
+    4. Split into chunks for embedding
+    5. Generate embeddings using OpenAI
+    6. Save FAISS index to disk
+
+    The resulting index can be loaded by the chatbot for semantic search.
+    """
     print("[index] building new index...")
 
-    # 1. Crawl your web docs
+    # Step 1: Crawl web documentation
     site_docs = _crawl_sites(START_URLS)
 
-    # 2. Load GitHub repo docs (README, .py, etc.)
+    # Step 2: Load code examples from Git repositories
     git_docs = _load_git_repos()
 
-    # 3. Merge all docs
+    # Step 3: Merge all documents
     all_docs = site_docs + git_docs
     print(f"[index] total docs (web + git): {len(all_docs)}")
 
-    # 4. Chunk, embed, store
+    # Step 4: Chunk documents for embedding
     chunks = _chunk_docs(all_docs)
+
+    # Step 5: Generate embeddings and create FAISS index
     embeddings = OpenAIEmbeddings(model=EMBED_MODEL)
     vs = FAISS.from_documents(chunks, embeddings)
+
+    # Step 6: Save index to disk
     vs.save_local(INDEX_PATH)
     print(f"[index] saved to {INDEX_PATH}")
 
