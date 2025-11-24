@@ -28,7 +28,7 @@ from langchain_community.vectorstores import FAISS
 from index.index_builder import EMBED_MODEL, OPENAI_MODEL
 
 # Import logging module
-from chatbot.logger import log_conversation, add_feedback, get_conversations, get_stats
+from chatbot.logger import log_conversation, add_feedback, get_conversations, get_stats, get_latest_conversation_id
 
 
 # ------------------ CONFIG ------------------
@@ -264,6 +264,10 @@ async def ask_stream(payload: Ask):
     Same as /ask but streams the response token by token for better UX.
     Also logs the conversation to SQLite database after streaming completes.
 
+    Note: The conversation ID cannot be returned directly from this endpoint
+    since it only completes after the stream finishes. Use the
+    GET /conversation/latest endpoint to retrieve the ID after streaming.
+
     Args:
         payload: Request containing question and optional history.
 
@@ -341,7 +345,7 @@ def health():
 class Feedback(BaseModel):
     """Request model for the /feedback endpoint."""
     conversation_id: int
-    feedback: int  # 1 for thumbs up, -1 for thumbs down
+    feedback: int  # -1 (bad), 0 (neutral), 1 (good)
     comment: str = None
 
 
@@ -403,3 +407,25 @@ def feedback_stats():
     except Exception as e:
         print(f"[ERROR] /feedback/stats failed: {e}")
         return {"error": str(e)}
+
+
+@app.get("/conversation/latest")
+def get_latest_conversation(question: str):
+    """
+    Get the most recent conversation ID for a given question.
+
+    This is useful for the frontend to retrieve the conversation ID
+    after using the streaming endpoint.
+
+    Args:
+        question: The question text to search for
+
+    Returns:
+        Dictionary with conversation_id, or None if not found
+    """
+    try:
+        conversation_id = get_latest_conversation_id(question)
+        return {"conversation_id": conversation_id}
+    except Exception as e:
+        print(f"[ERROR] /conversation/latest failed: {e}")
+        return {"conversation_id": None, "error": str(e)}

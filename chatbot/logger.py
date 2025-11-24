@@ -166,12 +166,34 @@ def get_conversations(
         return conversations
 
 
+def get_latest_conversation_id(question: str) -> Optional[int]:
+    """
+    Get the most recent conversation ID for a given question.
+
+    Args:
+        question: The question text to search for
+
+    Returns:
+        The conversation ID, or None if not found
+    """
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id FROM conversations
+            WHERE question = ?
+            ORDER BY timestamp DESC
+            LIMIT 1
+        """, (question,))
+        row = cursor.fetchone()
+        return row[0] if row else None
+
+
 def get_stats() -> Dict[str, Any]:
     """
     Get statistics about conversations.
 
     Returns:
-        Dictionary with stats (total, positive feedback, negative feedback, etc.)
+        Dictionary with stats (total, positive/neutral/negative feedback, etc.)
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -180,13 +202,17 @@ def get_stats() -> Dict[str, Any]:
         cursor.execute("SELECT COUNT(*) FROM conversations")
         total = cursor.fetchone()[0]
 
-        # Positive feedback
+        # Good feedback (3 stars)
         cursor.execute("SELECT COUNT(*) FROM conversations WHERE feedback = 1")
-        positive = cursor.fetchone()[0]
+        good = cursor.fetchone()[0]
 
-        # Negative feedback
+        # Neutral feedback (2 stars)
+        cursor.execute("SELECT COUNT(*) FROM conversations WHERE feedback = 0")
+        neutral = cursor.fetchone()[0]
+
+        # Bad feedback (1 star)
         cursor.execute("SELECT COUNT(*) FROM conversations WHERE feedback = -1")
-        negative = cursor.fetchone()[0]
+        bad = cursor.fetchone()[0]
 
         # Average response time
         cursor.execute("SELECT AVG(response_time_ms) FROM conversations WHERE response_time_ms IS NOT NULL")
@@ -194,9 +220,10 @@ def get_stats() -> Dict[str, Any]:
 
         return {
             "total_conversations": total,
-            "positive_feedback": positive,
-            "negative_feedback": negative,
-            "no_feedback": total - positive - negative,
+            "good_feedback": good,
+            "neutral_feedback": neutral,
+            "bad_feedback": bad,
+            "no_feedback": total - good - neutral - bad,
             "avg_response_time_ms": round(avg_response_time, 2) if avg_response_time else None
         }
 

@@ -90,12 +90,13 @@ Every question and answer is automatically logged to a SQLite database with:
 ### API Endpoints
 
 **Main Endpoints:**
-- `POST /ask` - Ask a question (with logging)
+- `POST /ask` - Ask a question (with logging, returns conversation_id)
 - `POST /ask/stream` - Ask a question with streaming response
+- `GET /conversation/latest?question=<text>` - Get the latest conversation ID for a question
 - `GET /health` - Health check
 
 **Feedback & Analytics:**
-- `POST /feedback` - Submit thumbs up/down for a conversation
+- `POST /feedback` - Submit 3-star rating (-1/0/1) for a conversation
 - `GET /feedback/conversations` - Export all logged conversations
 - `GET /feedback/stats` - View statistics (total Q&A, feedback counts, avg response time)
 
@@ -127,7 +128,7 @@ Under MIT license, see LICENSE.
 
 ## Next steps
 
-1. Build an evaluation framework dataset and code
-2. Use Langgraph for monitoring
-3. Try with Qdrant OR store index in SQLite or Postgres
+1. Insert external docs (Ansys, StarCCM, etc.)
+2. Improve referencing an dsourcing
+3. Try with Qdrant
 4. Use an agent instead :-)
