@@ -30,7 +30,7 @@ load_dotenv()
 # ------------------ CONFIG ------------------
 # OpenAI API configuration
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_MODEL = "gpt-4.1"  # LLM model for chat responses
+OPENAI_MODEL = "gpt-4.1-mini"  # LLM model for chat responses (cost-effective)
 EMBED_MODEL = "text-embedding-3-large"  # Embedding model for vectorization
 
 # Index storage path (relative to this file's directory)
@@ -43,10 +43,10 @@ USE_ASYNC = True  # Whether to use async crawling (currently disabled)
 PREVENT_OUTSIDE = True  # Prevent crawling outside the starting domain
 
 # URLs to crawl for documentation
+# Note: qarnot.com/ with MAX_DEPTH=3 covers /documentation, /blog, and all other pages
 START_URLS = [
-    "https://qarnot.com/documentation/overview",
-    "https://doc.tasq.qarnot.com/documentation/sdk-python/",
-    "https://qarnot.com/blog",
+    "https://qarnot.com/",  # Main site (covers docs, blog, product pages)
+    "https://doc.tasq.qarnot.com/documentation/sdk-python/",  # Separate domain - SDK docs
 ]
 
 # Git repositories containing code examples to index
@@ -141,6 +141,24 @@ def _crawl_sites(start_urls: List[str]) -> List[Any]:
 
 
 # ------------------ GIT LOADING HELPERS ------------------
+def _build_github_url(clone_url: str, branch: str, file_path: str) -> str:
+    """
+    Build a full GitHub URL for a file in a repository.
+
+    Args:
+        clone_url: The .git clone URL (e.g., https://github.com/user/repo.git)
+        branch: The branch name
+        file_path: The file path within the repo
+
+    Returns:
+        Full GitHub URL to view the file (e.g., https://github.com/user/repo/blob/main/path/file.py)
+    """
+    # Convert clone URL to browser URL
+    # https://github.com/qarnot/blog-samples.git -> https://github.com/qarnot/blog-samples
+    base_url = clone_url.replace(".git", "")
+    return f"{base_url}/blob/{branch}/{file_path}"
+
+
 def _load_git_repos() -> List[Any]:
     """
     Clone and load documents from configured Git repositories.
@@ -176,7 +194,12 @@ def _load_git_repos() -> List[Any]:
 
         # Add metadata to identify these as git/code sources
         for d in docs:
-            d.metadata["source"] = d.metadata.get("source") or clone_url
+            # Build full GitHub URL from the file path
+            file_path = d.metadata.get("source", "")
+            if file_path:
+                d.metadata["source"] = _build_github_url(clone_url, branch, file_path)
+            else:
+                d.metadata["source"] = clone_url
             d.metadata.setdefault("source_type", "git")
 
         repo_docs.extend(docs)

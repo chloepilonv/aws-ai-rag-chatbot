@@ -1,18 +1,27 @@
+# Core API
 fastapi
-uvicorn
-langchain
-langchain_openai
-langchain==1.0.2
-langchain-openai==1.0.1
-langchain-community==0.4
-openai==2.6.0
-langchain-community
-langchain-text-splitters
-faiss-cpu
-python-dotenv
-html2text
 uvicorn[standard]
-beautifulsoup4
+
+# LangChain (RAG)
+langchain>=0.3.0,<1.1
+langchain-openai>=0.2.0,<1.1
+langchain-community>=0.3.0,<0.5
+langchain-text-splitters
+
+# Vector store
+faiss-cpu
+
+# OpenAI
+openai>=1.0.0,<3.0
+
+# UI
 gradio>=5.0.0,<6.0.0
+
+# Utilities
+python-dotenv
+
+# Indexing only (not needed at runtime, but included for index rebuilds)
+html2text
+beautifulsoup4
 lxml
 GitPython

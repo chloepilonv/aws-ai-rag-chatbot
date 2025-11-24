@@ -75,7 +75,7 @@ def ask_llm(message, history):
 chat = gr.ChatInterface(
     fn=ask_llm,
     title="Your Internal Assistant",
-    description="Ask me anything",
+    description="Ask me anything. We suggest to precise if you want to use qarnot with the HPC/Tasq Platform or with the Python SDK.",
 )
 
 

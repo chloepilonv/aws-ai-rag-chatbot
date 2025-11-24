@@ -1,5 +1,19 @@
 venv/
 __pycache__/
 *.pyc
+*.pyo
 .git
 .gitignore
+.env
+*.md
+!chatbot/system_prompt.md
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+.DS_Store
+*.log
+
+# Old index location at root (NOT index/index-faiss which we need!)
+/index-faiss/

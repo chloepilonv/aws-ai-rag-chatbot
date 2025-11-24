@@ -35,6 +35,11 @@ COMPANY_NAME = "Qarnot"
 # Load environment variables from .env file
 load_dotenv()
 
+# Load system prompt from external file
+SYSTEM_PROMPT_PATH = os.path.join(os.path.dirname(__file__), "system_prompt.md")
+with open(SYSTEM_PROMPT_PATH, "r") as f:
+    SYSTEM_PROMPT = f.read().replace("{COMPANY_SUPPORT_EMAIL}", COMPANY_SUPPORT_EMAIL)
+
 
 # ------------------ LOAD INDEX ------------------
 # Initialize embeddings model (must match the one used during indexing)
@@ -47,10 +52,15 @@ vectorstore = FAISS.load_local(
     allow_dangerous_deserialization=True,  # Required for loading pickled data
 )
 
-# Create a retriever that returns the top 8 most similar documents
+# Create a retriever using MMR (Maximum Marginal Relevance) for diverse results
+# This ensures we get both web docs AND git code examples, not just similar web pages
 retriever = vectorstore.as_retriever(
-    search_type="similarity",
-    search_kwargs={"k": 8},
+    search_type="mmr",
+    search_kwargs={
+        "k": 8,  # Return 8 documents
+        "fetch_k": 20,  # Fetch 20 candidates before MMR re-ranking
+        "lambda_mult": 0.5,  # Balance between similarity (1.0) and diversity (0.0)
+    },
 )
 
 
@@ -92,28 +102,6 @@ def _format_docs(docs: List[Any]) -> str:
     return "\n\n---\n\n".join(blocks)
 
 
-# System prompt that instructs the LLM how to behave
-SYSTEM_PROMPT = f"""
-You are an internal company assistant.
-
-1. If the user is just greeting you or making small talk
-   (e.g., "hi", "hello", "thanks", "how are you", emojis, etc.):
-   - Respond briefly and friendly.
-   - DO NOT use any external context.
-   - DO NOT include a "Sources" section.
-
-2. For product / documentation / technical questions:
-   - Answer ONLY from the provided context.
-   - The context contains two types of sources:
-     * Web documentation: explanations and tutorials
-     * CODE EXAMPLE sources: complete, working Python scripts from our GitHub repo
-   - When the user asks "how to" do something, ALWAYS include the full code from CODE EXAMPLE sources. These are real, tested scripts that users can copy and run.
-   - Don't just reference filenames - show the actual code content.
-   - If the answer is not in the context, say you don't know and suggest contacting support at {COMPANY_SUPPORT_EMAIL}.
-   - For sources: list only the top 3 most relevant sources. If multiple context items share the same URL, list that URL only once.
-   - Do not fabricate sources or code.
-"""
-
 # Chat prompt template combining system instructions and user question
 PROMPT = ChatPromptTemplate.from_messages(
     [
@@ -121,8 +109,7 @@ PROMPT = ChatPromptTemplate.from_messages(
         (
             "human",
             "User question:\n{question}\n\nContext:\n{context}\n\n"
-            "Format: a helpful answer followed by a 'Sources' section.\n"
-            "IMPORTANT: In the Sources section, list maximum 3 unique URLs. Never repeat the same URL twice.",
+            "Format: a helpful answer followed by a 'Sources' section.",
         ),
     ]
 )
