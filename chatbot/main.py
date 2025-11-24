@@ -10,7 +10,7 @@ import os
 from typing import List, Any, Dict
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -117,6 +117,9 @@ PROMPT = ChatPromptTemplate.from_messages(
 # Initialize the LLM with zero temperature for deterministic responses
 llm = ChatOpenAI(model=OPENAI_MODEL, temperature=0)
 
+# Streaming LLM for the streaming endpoint
+llm_streaming = ChatOpenAI(model=OPENAI_MODEL, temperature=0, streaming=True)
+
 # RAG chain: retrieve context and pass question, then format and send to LLM
 rag_inputs = RunnableParallel(
     context=lambda x: _format_docs(retriever.invoke(x["question"])),
@@ -203,6 +206,48 @@ def ask(payload: Ask) -> Dict[str, Any]:
     except Exception as e:
         print(f"[ERROR] /ask failed: {e}")
         return {"answer": f"Error processing request: {str(e)}"}
+
+
+@app.post("/ask/stream")
+async def ask_stream(payload: Ask):
+    """
+    Streaming endpoint for asking questions to the chatbot.
+
+    Same as /ask but streams the response token by token for better UX.
+
+    Args:
+        payload: Request containing question and optional history.
+
+    Returns:
+        StreamingResponse with the LLM's response streamed as text.
+    """
+    async def generate():
+        try:
+            # Prepend conversation history to the question if available
+            history_text = _format_history(payload.history)
+            question_with_history = payload.question
+            if history_text:
+                question_with_history = f"Previous conversation:\n{history_text}\n\nCurrent question: {payload.question}"
+
+            # Get context (non-streaming part)
+            context = _format_docs(retriever.invoke(question_with_history))
+
+            # Build the streaming chain
+            rag_chain_stream = PROMPT | llm_streaming
+
+            # Stream the response
+            async for chunk in rag_chain_stream.astream({
+                "question": question_with_history,
+                "context": context,
+            }):
+                content = chunk.content if hasattr(chunk, "content") else str(chunk)
+                if content:
+                    yield content
+
+        except Exception as e:
+            yield f"\n\n❌ Error: {str(e)}"
+
+    return StreamingResponse(generate(), media_type="text/plain")
 
 
 @app.get("/health")

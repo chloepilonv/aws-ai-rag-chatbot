@@ -45,3 +45,10 @@ This chatbot:
 
 **License**
 Under MIT license, see LICENSE.
+
+## Next steps
+
+1. Build an evaluation framework dataset and code
+2. Use Langgraph for monitoring
+3. Try with Qdrant OR store index in SQLite or Postgres
+4. Use an agent instead :-)
