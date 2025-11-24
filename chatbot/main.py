@@ -110,7 +110,7 @@ You are an internal company assistant.
    - When the user asks "how to" do something, ALWAYS include the full code from CODE EXAMPLE sources. These are real, tested scripts that users can copy and run.
    - Don't just reference filenames - show the actual code content.
    - If the answer is not in the context, say you don't know and suggest contacting support at {COMPANY_SUPPORT_EMAIL}.
-   - Cite sources using [n] and list them under "Sources" with their URL.
+   - For sources: list only the top 3 most relevant sources. If multiple context items share the same URL, list that URL only once.
    - Do not fabricate sources or code.
 """
 
@@ -121,7 +121,8 @@ PROMPT = ChatPromptTemplate.from_messages(
         (
             "human",
             "User question:\n{question}\n\nContext:\n{context}\n\n"
-            "Format: a helpful answer followed by a 'Sources' section.",
+            "Format: a helpful answer followed by a 'Sources' section.\n"
+            "IMPORTANT: In the Sources section, list maximum 3 unique URLs. Never repeat the same URL twice.",
         ),
     ]
 )
