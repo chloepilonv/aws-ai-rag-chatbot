@@ -16,3 +16,5 @@ venv/
 # *.pkl
 *.npy
 
+# Conversation logs
+.chatbot-data/

@@ -128,8 +128,9 @@ Under MIT license, see LICENSE.
 
 ## Next steps
 
-1. Insert external docs (Ansys, StarCCM, etc.)
-2. Test run with and without -p 8000:8000
+1. Turn off Hugging Face and Gradio Telemtry
+2. Insert external docs (Ansys, StarCCM, etc.)
 3. Improve referencing an dsourcing
 4. Try with Qdrant
-5. Use an agent instead :-)
+5. Fuzz-testing
+6. Use an agent instead :-)
