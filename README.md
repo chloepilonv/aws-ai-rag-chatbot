@@ -40,10 +40,10 @@ mkdir -p /srv/chatbot-data
 
 # Run the container with volume mount
 docker run -d \
+  --env-file .env \
   -p 8000:8000 \
   -p 7860:7860 \
-  -v /srv/chatbot-data:/data \
-  -e OPENAI_API_KEY=your-api-key \
+  -v $(pwd)/chatbot-data:/data \
   chatbot-mvp
 ```
 
@@ -129,6 +129,7 @@ Under MIT license, see LICENSE.
 ## Next steps
 
 1. Insert external docs (Ansys, StarCCM, etc.)
-2. Improve referencing an dsourcing
-3. Try with Qdrant
-4. Use an agent instead :-)
+2. Test run with and without -p 8000:8000
+3. Improve referencing an dsourcing
+4. Try with Qdrant
+5. Use an agent instead :-)

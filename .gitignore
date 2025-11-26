@@ -10,9 +10,9 @@ venv/
 .env/
 .env*/
 
-# RAG / FAISS index
-index-faiss/
-*.faiss
-*.pkl
+# RAG / FAISS index - now tracked in git for Render deployment
+# index-faiss/
+# *.faiss
+# *.pkl
 *.npy
 
