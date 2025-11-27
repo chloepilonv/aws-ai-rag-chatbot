@@ -44,10 +44,27 @@ PREVENT_OUTSIDE = True  # Prevent crawling outside the starting domain
 
 # URLs to crawl for documentation
 # Note: qarnot.com/ with MAX_DEPTH=3 covers /documentation, /blog, and all other pages
+
 START_URLS = [
     "https://qarnot.com/",  # Main site (covers docs, blog, product pages)
     "https://doc.tasq.qarnot.com/documentation/sdk-python/",  # Separate domain - SDK docs
+    "https://qarnot.com/documentation/overview",
+    "https://doc.tasq.qarnot.com/documentation/en/home",
+    "https://qarnot.com/blog/cluster-roce",
+    "https://qarnot.com/blog/paraview-web-qarnot",
+    "https://qarnot.com/blog/code-saturne-qarnot",
+    "https://qarnot.com/blog/openfoam-foundation-qarnot",
+    "https://qarnot.com/blog/ansys-fluent-qarnot",
+    "https://qarnot.com/blog/matlab-simulink-qarnot",
+    "https://qarnot.com/blog/converge-qarnot",
+    "https://qarnot.com/blog/star-ccm-qarnot",
+    "https://qarnot.com/blog/openfoam-qarnot",
+    "https://qarnot.com/blog/code-aster-qarnot",
+    "https://qarnot.com/blog/fire-dynamics-simulator-qarnot",
+    "https://qarnot.com/blog/ls-dyna-qarnot",
 ]
+
+
 
 # Git repositories containing code examples to index
 GIT_REPOS = [
@@ -186,7 +203,11 @@ def _load_git_repos() -> List[Any]:
             clone_url=clone_url,
             repo_path=local_path,
             branch=branch,
-            file_filter=lambda p: p.endswith(".md") or p.endswith(".py"),
+            file_filter=lambda p: (
+                p.startswith("openfoam/") or
+                p.startswith("ansys-fluent/") or
+                p.startswith("ls-dyna/")
+            ) and (p.endswith(".md") or p.endswith(".py"))
         )
 
         docs = loader.load()

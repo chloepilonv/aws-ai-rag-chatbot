@@ -1,0 +1,80 @@
+Metadata-Version: 2.4
+Name: qarnot
+Version: 2.19.0
+Summary: Qarnot Computing SDK
+Home-page: https://computing.qarnot.com
+Author: Qarnot computing
+Author-email: support@qarnot-computing.com
+License: apache
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Information Technology
+Classifier: License :: OSI Approved :: Apache Software License
+Requires-Python: >=3.6
+License-File: LICENSE
+Requires-Dist: requests
+Requires-Dist: boto3>=1.36
+Requires-Dist: wheel
+Requires-Dist: deprecation
+Requires-Dist: simplejson
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: home-page
+Dynamic: license
+Dynamic: license-file
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+Qarnot computing Python SDK
+===========================
+
+|pypi-badge|_ |readthedocs-badge|_
+
+This package allows you to use Qarnot cloud computing service.
+
+You can launch, manage and monitor payloads running on distributed computing nodes deployed in Qarnot’s `digital boilers <https://qarnot.com/fr/produits/infrastructure/qb>`_.
+
+Basic usage
+===========
+
+Create an account, retrieve your token and get free computation time on `account.qarnot.com <https://account.qarnot.com>`_
+
+Launch a docker container in 7 lines:
+
+.. code:: python
+
+    import qarnot
+    conn = qarnot.connection.Connection(client_token="xxxx_mytoken_xxxx")
+    task = conn.create_task('hello world', 'docker-batch', 4)
+    task.constants['DOCKER_CMD'] = 'echo hello world from node #${FRAME_ID}!'
+    task.run()
+    print(task.stdout())
+
+Samples and documentations
+==========================
+You can find samples and detailed information on `qarnot.com <https://qarnot.com>`_.
+
+SDK documentation is available `here <https://qarnot.com/documentation/sdk-python/>`_
+
+Generating documentation
+========================
+
+To generate the SDK documentation you can use the following command
+
+.. code:: bash
+
+    make -C doc html
+
+The index of the doc is then generated in `doc/_build/html/index.html`
+
+.. |pypi-badge| image:: https://img.shields.io/pypi/v/qarnot.svg
+.. _pypi-badge: https://pypi.python.org/pypi/qarnot/
+.. |readthedocs-badge| image:: https://readthedocs.org/projects/qarnot/badge/?version=latest
+.. _readthedocs-badge: https://qarnot.readthedocs.io/en/latest/
