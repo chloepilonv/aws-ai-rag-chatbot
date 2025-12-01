@@ -10,6 +10,9 @@ venv/
 .env/
 .env*/
 
+# Claude Code CLI
+.claude/
+
 # RAG / FAISS index - now tracked in git for Render deployment
 # index-faiss/
 # *.faiss

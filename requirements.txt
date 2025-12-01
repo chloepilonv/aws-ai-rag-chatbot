@@ -25,5 +25,6 @@ html2text
 beautifulsoup4
 lxml
 GitPython
+playwright  # For crawling JavaScript-rendered pages (doc.tasq.qarnot.com)
 
 #pandas requirements

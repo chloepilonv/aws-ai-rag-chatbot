@@ -21,7 +21,19 @@ source venv/bin/activate
 pip3 install -r requirements.txt
 ```
 
-3. **Run the app**
+3. **Build the FAISS index**
+```bash
+# Clean previous index and rebuild from scratch
+rm -rf index/index-faiss/* index/__pycache__/ && venv/bin/python index/index_builder.py
+```
+
+This will:
+- Crawl configured documentation websites
+- Clone and load Python examples from Git repositories
+- Generate embeddings and create the FAISS vector index
+- Save the index to `index/index-faiss/`
+
+4. **Run the app**
 ```bash
 ./run.sh
 ```
@@ -130,7 +142,8 @@ Under MIT license, see LICENSE.
 
 1. Turn off Hugging Face and Gradio Telemtry
 2. Insert external docs (Ansys, StarCCM, etc.)
-3. Improve referencing an dsourcing
+3. Improve referencing and sourcing
 4. Try with Qdrant
 5. Fuzz-testing
 6. Use an agent instead :-)
+7. Remove the playwright crawler if it takes too much time. 

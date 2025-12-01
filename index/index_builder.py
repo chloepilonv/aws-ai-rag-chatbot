@@ -19,6 +19,8 @@ from langchain_community.vectorstores import FAISS
 from langchain_community.document_loaders import (
     RecursiveUrlLoader,
     GitLoader,
+    DirectoryLoader,
+    TextLoader,
 )
 from langchain_community.document_transformers import Html2TextTransformer
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -43,25 +45,17 @@ USE_ASYNC = True  # Whether to use async crawling (currently disabled)
 PREVENT_OUTSIDE = True  # Prevent crawling outside the starting domain
 
 # URLs to crawl for documentation
-# Note: qarnot.com/ with MAX_DEPTH=3 covers /documentation, /blog, and all other pages
-
 START_URLS = [
-    "https://qarnot.com/",  # Main site (covers docs, blog, product pages)
-    "https://doc.tasq.qarnot.com/documentation/sdk-python/",  # Separate domain - SDK docs
-    "https://qarnot.com/documentation/overview",
-    "https://doc.tasq.qarnot.com/documentation/en/home",
-    "https://qarnot.com/blog/cluster-roce",
-    "https://qarnot.com/blog/paraview-web-qarnot",
-    "https://qarnot.com/blog/code-saturne-qarnot",
-    "https://qarnot.com/blog/openfoam-foundation-qarnot",
-    "https://qarnot.com/blog/ansys-fluent-qarnot",
-    "https://qarnot.com/blog/matlab-simulink-qarnot",
-    "https://qarnot.com/blog/converge-qarnot",
-    "https://qarnot.com/blog/star-ccm-qarnot",
-    "https://qarnot.com/blog/openfoam-qarnot",
-    "https://qarnot.com/blog/code-aster-qarnot",
-    "https://qarnot.com/blog/fire-dynamics-simulator-qarnot",
-    "https://qarnot.com/blog/ls-dyna-qarnot",
+    "https://qarnot.com/",  # Main site - blog posts filtered by ALLOWED_BLOG_POSTS
+    "https://qarnot.com/documentation/overview",  # HPC platform docs (static HTML)
+    "https://doc.tasq.qarnot.com/documentation/sdk-python/",  # Tasq SDK docs (works with regular crawler)
+]
+
+# Blog posts to KEEP (all others from /blog/ will be filtered out)
+ALLOWED_BLOG_POSTS = [
+    "blog/ansys-fluent-qarnot",
+    "blog/openfoam-foundation-qarnot",
+    "blog/ls-dyna-qarnot",
 ]
 
 
@@ -74,8 +68,127 @@ GIT_REPOS = [
     }
 ]
 
+# Specific directories to include from Git repositories
+# Only .py and .md files from these directories will be indexed
+GIT_REPO_DIRECTORIES = [
+    "ansys-fluent/",
+    "openfoam-foundation/",
+    "openfoam/",
+    "ls-dyna/",
+]
+
 
 # ------------------ CRAWLING HELPERS ------------------
+def _crawl_js_rendered_recursive(start_url: str, max_depth: int = MAX_DEPTH) -> List[Any]:
+    """
+    Recursively crawl JavaScript-rendered pages using Playwright headless browser.
+
+    SPECIAL CASE FOR doc.tasq.qarnot.com:
+    This site is built with Vue.js and renders content client-side via JavaScript.
+    Regular HTTP crawlers (like RecursiveUrlLoader) only see the empty HTML shell,
+    missing all the actual documentation content.
+
+    This function:
+    1. Launches a headless Chromium browser (kept alive across multiple pages)
+    2. Navigates to the starting URL and waits for JavaScript to execute
+    3. Extracts links from the rendered page
+    4. Recursively follows links within the same domain up to max_depth
+    5. Converts all rendered HTML to markdown text
+    6. Returns all documents
+
+    Args:
+        start_url: The root URL to start crawling from
+        max_depth: Maximum depth to crawl (default: MAX_DEPTH from config)
+
+    Returns:
+        List of Document objects from all crawled pages
+    """
+    from playwright.sync_api import sync_playwright
+    from langchain_core.documents import Document
+    from urllib.parse import urljoin, urlparse
+
+    print(f"[js-crawler] starting recursive crawl from {start_url} (max_depth={max_depth})")
+
+    all_docs = []
+    visited = set()  # Track visited URLs to avoid duplicates
+    to_visit = [(start_url, 0)]  # Queue of (url, depth) tuples
+
+    # Extract base domain to prevent crawling outside
+    base_domain = urlparse(start_url).netloc
+    base_path = "/".join(start_url.split("/")[:4])  # https://doc.tasq.qarnot.com/documentation
+
+    try:
+        with sync_playwright() as p:
+            # Launch headless browser (reused across all pages)
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+
+            try:
+                while to_visit:
+                    current_url, depth = to_visit.pop(0)
+
+                    # Skip if already visited or too deep
+                    if current_url in visited or depth > max_depth:
+                        continue
+
+                    # Skip if outside base path
+                    if not current_url.startswith(base_path):
+                        continue
+
+                    visited.add(current_url)
+                    print(f"[js-crawler] [{len(visited)}] depth={depth} {current_url}")
+
+                    try:
+                        # Navigate and wait for content to load
+                        page.goto(current_url, wait_until="networkidle", timeout=TIMEOUT_SEC * 1000)
+                        page.wait_for_timeout(2000)  # Extra wait for Vue.js rendering
+
+                        # Get rendered HTML
+                        content = page.content()
+
+                        # Create document
+                        raw_doc = Document(page_content=content, metadata={"source": current_url})
+                        text_docs = Html2TextTransformer().transform_documents([raw_doc])
+
+                        for d in text_docs:
+                            d.metadata["source"] = current_url
+                            d.metadata.setdefault("source_type", "web")
+
+                        all_docs.extend(text_docs)
+
+                        # Extract links if not at max depth
+                        if depth < max_depth:
+                            links = page.eval_on_selector_all(
+                                'a[href]',
+                                '(elements) => elements.map(e => e.href)'
+                            )
+
+                            for link in links:
+                                # Normalize URL
+                                absolute_url = urljoin(current_url, link)
+                                # Remove fragments
+                                absolute_url = absolute_url.split('#')[0]
+
+                                # Only follow links within the same base path
+                                if (absolute_url.startswith(base_path) and
+                                    absolute_url not in visited and
+                                    absolute_url not in [u for u, _ in to_visit]):
+                                    to_visit.append((absolute_url, depth + 1))
+
+                    except Exception as e:
+                        print(f"[js-crawler] ERROR on {current_url}: {e}")
+                        continue  # Skip this page but continue crawling
+
+            finally:
+                browser.close()
+
+    except Exception as e:
+        print(f"[js-crawler] FATAL ERROR: {e}")
+
+    print(f"[js-crawler] crawled {len(visited)} pages, got {len(all_docs)} documents")
+    return all_docs
+
+
 def _crawl_one(url_root: str) -> List[Any]:
     """
     Crawl a single URL recursively up to MAX_DEPTH levels.
@@ -108,8 +221,12 @@ def _crawl_sites(start_urls: List[str]) -> List[Any]:
     """
     Crawl multiple websites and convert HTML to plain text.
 
+    IMPORTANT: This function handles TWO types of sites:
+    1. Regular static HTML sites -> uses RecursiveUrlLoader
+    2. JavaScript-rendered sites (doc.tasq.qarnot.com) -> uses Playwright
+
     Processes each URL by:
-    1. Recursively crawling all pages
+    1. Recursively crawling all pages (or rendering with JS if needed)
     2. Converting HTML to markdown/text
     3. Adding source metadata
     4. Deduplicating based on content hash
@@ -123,7 +240,7 @@ def _crawl_sites(start_urls: List[str]) -> List[Any]:
     all_docs = []
 
     for root in start_urls:
-        # Crawl the site
+        # Crawl the site (normal HTTP crawler)
         raw_docs = _crawl_one(root)
 
         # Convert HTML to plain text
@@ -144,16 +261,37 @@ def _crawl_sites(start_urls: List[str]) -> List[Any]:
 
         all_docs.extend(text_docs)
 
+    # Filter blog posts: keep only allowed ones, keep all non-blog content
+    filtered_docs = []
+    excluded_count = 0
+    for d in all_docs:
+        source = d.metadata.get("source", "")
+
+        # Check if this is a blog post
+        if "/blog/" in source:
+            # Only keep if it's in the allowlist
+            is_allowed = any(allowed in source for allowed in ALLOWED_BLOG_POSTS)
+            if is_allowed:
+                filtered_docs.append(d)
+            else:
+                excluded_count += 1
+        else:
+            # Not a blog post, keep it
+            filtered_docs.append(d)
+
+    if excluded_count > 0:
+        print(f"[crawler] excluded {excluded_count} non-allowed blog posts")
+
     # Deduplicate documents by source URL and content hash
     seen = set()
     deduped = []
-    for d in all_docs:
+    for d in filtered_docs:
         key = (d.metadata.get("source", ""), hash(d.page_content))
         if key not in seen and d.page_content.strip():
             seen.add(key)
             deduped.append(d)
 
-    print(f"[crawler] total after merge+dedup: {len(deduped)}")
+    print(f"[crawler] total after filter+dedup: {len(deduped)}")
     return deduped
 
 
@@ -188,6 +326,9 @@ def _load_git_repos() -> List[Any]:
     Returns:
         List of Document objects from all Git repositories.
     """
+    import subprocess
+    import glob as glob_module
+
     repo_docs: List[Any] = []
 
     for repo in GIT_REPOS:
@@ -198,32 +339,44 @@ def _load_git_repos() -> List[Any]:
         local_path = tempfile.mkdtemp(prefix="qarnot_repo_")
         print(f"[git] cloning {clone_url} (branch={branch}) into {local_path}")
 
-        # Load only .md and .py files from the repository
-        loader = GitLoader(
-            clone_url=clone_url,
-            repo_path=local_path,
-            branch=branch,
-            file_filter=lambda p: (
-                p.startswith("openfoam/") or
-                p.startswith("ansys-fluent/") or
-                p.startswith("ls-dyna/")
-            ) and (p.endswith(".md") or p.endswith(".py"))
+        # Clone the repository using subprocess
+        subprocess.run(
+            ["git", "clone", "--depth", "1", "--branch", branch, clone_url, local_path],
+            check=True,
+            capture_output=True
         )
 
-        docs = loader.load()
-        print(f"[git] loaded {len(docs)} docs from {clone_url}")
+        # Load files from specific directories
+        for directory in GIT_REPO_DIRECTORIES:
+            dir_path = os.path.join(local_path, directory.rstrip("/"))
+            if not os.path.exists(dir_path):
+                print(f"[git] directory not found: {directory}")
+                continue
 
-        # Add metadata to identify these as git/code sources
-        for d in docs:
-            # Build full GitHub URL from the file path
-            file_path = d.metadata.get("source", "")
-            if file_path:
-                d.metadata["source"] = _build_github_url(clone_url, branch, file_path)
-            else:
-                d.metadata["source"] = clone_url
-            d.metadata.setdefault("source_type", "git")
+            # Find all .py and .md files in this directory
+            py_files = glob_module.glob(os.path.join(dir_path, "*.py"))
+            md_files = glob_module.glob(os.path.join(dir_path, "*.md"))
+            all_files = py_files + md_files
 
-        repo_docs.extend(docs)
+            print(f"[git] loading {len(all_files)} files from {directory}")
+
+            for file_path in all_files:
+                try:
+                    loader = TextLoader(file_path, encoding="utf-8")
+                    docs = loader.load()
+
+                    # Update metadata for each document
+                    for d in docs:
+                        # Get relative path from repo root
+                        rel_path = os.path.relpath(file_path, local_path)
+                        # Build GitHub URL
+                        d.metadata["source"] = _build_github_url(clone_url, branch, rel_path)
+                        d.metadata["source_type"] = "git"
+                        d.metadata["file_name"] = os.path.basename(file_path)
+
+                    repo_docs.extend(docs)
+                except Exception as e:
+                    print(f"[git] error loading {file_path}: {e}")
 
     print(f"[git] total repo docs: {len(repo_docs)}")
     return repo_docs

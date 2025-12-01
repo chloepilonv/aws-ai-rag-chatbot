@@ -132,8 +132,7 @@ PROMPT = ChatPromptTemplate.from_messages(
         ("system", SYSTEM_PROMPT),
         (
             "human",
-            "User question:\n{question}\n\nContext:\n{context}\n\n"
-            "Format: a helpful answer followed by a 'Sources' section.",
+            "User question:\n{question}\n\nContext:\n{context}",
         ),
     ]
 )
