@@ -216,20 +216,11 @@ with gr.Blocks(title="Your Internal Assistant", css="""
         margin: 16px 0;
     }
 """) as demo:
-    gr.Markdown("# Your Internal Assistant")
-    gr.Markdown("Ask me anything. We suggest to precise if you want to use qarnot with the HPC/Tasq Platform or with the Python SDK.")
+    gr.Markdown("# Votre assistant Qarnot")
+    gr.Markdown("Posez-moi des questions sur la plateforme Qarnot / Ask me questions about Qarnot's platofrm. ")
 
     chatbot = gr.Chatbot()
     msg = gr.Textbox(label="Your question", placeholder="Type your question here...")
-
-    # Feedback section - centered below the question field
-    with gr.Column(elem_classes="feedback-container"):
-        gr.Markdown("**Rate the answer:**")
-        with gr.Row():
-            btn_bad = gr.Button("⭐", size="sm", elem_classes="star-btn")
-            btn_neutral = gr.Button("⭐⭐", size="sm", elem_classes="star-btn")
-            btn_good = gr.Button("⭐⭐⭐", size="sm", elem_classes="star-btn")
-        feedback_status = gr.Markdown("")
 
     # Wire up the chat
     def user(user_message, history):
@@ -245,11 +236,6 @@ with gr.Blocks(title="Your Internal Assistant", css="""
     msg.submit(user, [msg, chatbot], [msg, chatbot], queue=False).then(
         bot, chatbot, chatbot
     )
-
-    # Wire up feedback buttons
-    btn_bad.click(lambda hist: submit_feedback_click(-1, hist), chatbot, feedback_status)
-    btn_neutral.click(lambda hist: submit_feedback_click(0, hist), chatbot, feedback_status)
-    btn_good.click(lambda hist: submit_feedback_click(1, hist), chatbot, feedback_status)
 
 
 if __name__ == "__main__":

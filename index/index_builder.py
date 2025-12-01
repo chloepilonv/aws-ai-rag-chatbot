@@ -46,10 +46,15 @@ PREVENT_OUTSIDE = True  # Prevent crawling outside the starting domain
 
 # URLs to crawl for documentation
 START_URLS = [
-    "https://qarnot.com/",  # Main site - blog posts filtered by ALLOWED_BLOG_POSTS
-    "https://qarnot.com/documentation/overview",  # HPC platform docs (static HTML)
-    "https://doc.tasq.qarnot.com/documentation/sdk-python/",  # Tasq SDK docs (works with regular crawler)
+    "https://qarnot.com/",
+    "https://qarnot.com/documentation/overview",
+    "https://doc.tasq.qarnot.com/documentation/sdk-python/",
+    # Tasq documentation routes are auto-discovered (see _get_tasq_docs_urls below)
 ]
+
+# Enable automatic route discovery for doc.tasq.qarnot.com
+# Set to False to use manual URL list above
+AUTO_DISCOVER_TASQ_ROUTES = True
 
 # Blog posts to KEEP (all others from /blog/ will be filtered out)
 ALLOWED_BLOG_POSTS = [
@@ -115,7 +120,13 @@ def _crawl_js_rendered_recursive(start_url: str, max_depth: int = MAX_DEPTH) -> 
 
     # Extract base domain to prevent crawling outside
     base_domain = urlparse(start_url).netloc
-    base_path = "/".join(start_url.split("/")[:4])  # https://doc.tasq.qarnot.com/documentation
+    # Allow crawling anywhere under /documentation/en/ for English docs
+    if "/documentation/en/" in start_url:
+        base_path = f"https://{base_domain}/documentation/en/"
+    elif "/documentation/sdk-python/" in start_url:
+        base_path = f"https://{base_domain}/documentation/sdk-python/"
+    else:
+        base_path = "/".join(start_url.split("/")[:4])  # Default: first 4 segments
 
     try:
         with sync_playwright() as p:
@@ -240,11 +251,15 @@ def _crawl_sites(start_urls: List[str]) -> List[Any]:
     all_docs = []
 
     for root in start_urls:
-        # Crawl the site (normal HTTP crawler)
-        raw_docs = _crawl_one(root)
-
-        # Convert HTML to plain text
-        text_docs = Html2TextTransformer().transform_documents(raw_docs)
+        # Check if this is a JavaScript-rendered site that needs Playwright
+        if "doc.tasq.qarnot.com" in root:
+            # Use Playwright for Vue.js rendered pages
+            text_docs = _crawl_js_rendered_recursive(root)
+        else:
+            # Crawl the site (normal HTTP crawler)
+            raw_docs = _crawl_one(root)
+            # Convert HTML to plain text
+            text_docs = Html2TextTransformer().transform_documents(raw_docs)
 
         # Add metadata to each document
         for d in text_docs:
@@ -385,53 +400,146 @@ def _load_git_repos() -> List[Any]:
 # ------------------ CHUNKING HELPERS ------------------
 def _chunk_docs(docs: List[Any]) -> List[Any]:
     """
-    Split documents into smaller chunks for embedding.
+    Split documents into smaller chunks for embedding with improved strategy.
 
-    Uses recursive character splitting to break documents into
-    chunks of ~1000 characters with 150 character overlap.
-    Overlap ensures context is preserved across chunk boundaries.
+    IMPROVEMENTS FROM BASIC CHUNKING:
+    1. Different chunk sizes for code vs documentation
+       - Code examples: 1500 chars (need more context for complete functions)
+       - Documentation: 1000 chars (standard for text)
+    2. Source quality scoring metadata
+       - Official docs: priority 3 (highest)
+       - Git code examples: priority 2 (high for "how to" questions)
+       - Blog posts: priority 1 (lowest)
+    3. Source type metadata for better filtering
 
     Args:
         docs: List of Document objects to chunk.
 
     Returns:
-        List of chunked Document objects with preserved metadata.
+        List of chunked Document objects with enhanced metadata.
     """
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,  # Target size for each chunk
-        chunk_overlap=150,  # Overlap between chunks for context continuity
-        separators=["\n\n", "\n", " ", ""],  # Split priority: paragraph > line > word > char
+    # Separate docs by type for different chunking strategies
+    code_docs = [d for d in docs if d.metadata.get("source_type") == "git"]
+    web_docs = [d for d in docs if d.metadata.get("source_type") != "git"]
+
+    # Code splitter: larger chunks to preserve function context
+    code_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1500,
+        chunk_overlap=200,
+        separators=["\n\n", "\nclass ", "\ndef ", "\n", " ", ""],
     )
 
-    chunks = splitter.split_documents(docs)
+    # Web docs splitter: standard size
+    web_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=150,
+        separators=["\n\n", "\n", " ", ""],
+    )
 
-    # Ensure each chunk has source metadata
-    for d in chunks:
+    # Chunk each type
+    code_chunks = code_splitter.split_documents(code_docs) if code_docs else []
+    web_chunks = web_splitter.split_documents(web_docs) if web_docs else []
+
+    # Add source quality scoring
+    for d in code_chunks:
         d.metadata["source"] = d.metadata.get("source", "unknown")
+        d.metadata["source_type"] = "git"
+        d.metadata["quality_score"] = 3  # CODE EXAMPLES: Highest priority (changed from 2)
 
-    print(f"[index] chunks: {len(chunks)}")
-    return chunks
+    for d in web_chunks:
+        source = d.metadata.get("source", "")
+        d.metadata["source"] = source
+
+        # Determine quality score based on source
+        if "doc.tasq.qarnot.com" in source or "qarnot.com/documentation" in source:
+            d.metadata["quality_score"] = 3  # Official docs (same as code)
+        elif "/blog/" in source:
+            d.metadata["quality_score"] = 1  # Blog posts (lowest)
+        else:
+            d.metadata["quality_score"] = 2  # Other web content (medium)
+
+    all_chunks = code_chunks + web_chunks
+    print(f"[index] chunks: {len(all_chunks)} (code: {len(code_chunks)}, web: {len(web_chunks)})")
+    return all_chunks
+
+
+# ------------------ ROUTE DISCOVERY ------------------
+def _get_tasq_docs_urls() -> List[str]:
+    """
+    Get all doc.tasq.qarnot.com documentation URLs.
+
+    If AUTO_DISCOVER_TASQ_ROUTES is True, automatically discovers all routes.
+    Otherwise, uses the cached discovered_routes.json file.
+
+    Returns:
+        List of documentation URLs to crawl
+    """
+    # Add index directory to path for imports
+    import sys
+    index_dir = os.path.dirname(os.path.abspath(__file__))
+    if index_dir not in sys.path:
+        sys.path.insert(0, index_dir)
+
+    if not AUTO_DISCOVER_TASQ_ROUTES:
+        print("[index] auto-discovery disabled, using cached routes")
+        # Try to load from cache
+        import route_discovery
+        cached_routes = route_discovery.load_discovered_routes()
+        if cached_routes:
+            print(f"[index] loaded {len(cached_routes)} routes from cache")
+            return cached_routes
+        else:
+            print("[index] no cached routes found, falling back to manual list")
+            return []
+
+    # Auto-discover routes
+    print("[index] auto-discovering Tasq documentation routes...")
+    import route_discovery
+
+    routes = route_discovery.discover_routes_from_nuxt("https://doc.tasq.qarnot.com")
+
+    if routes:
+        # Save for next time (caching)
+        route_discovery.save_routes(routes)
+        print(f"[index] discovered {len(routes)} routes from doc.tasq.qarnot.com")
+        return routes
+    else:
+        print("[index] route discovery failed, using empty list")
+        return []
 
 
 # ------------------ BUILD INDEX ------------------
 def build_index() -> None:
     """
-    Build the complete FAISS vector index.
+    Build the complete FAISS vector index with BM25 support.
 
     Pipeline:
-    1. Crawl web documentation from START_URLS
-    2. Load code examples from GIT_REPOS
-    3. Merge all documents
-    4. Split into chunks for embedding
-    5. Generate embeddings using OpenAI
-    6. Save FAISS index to disk
+    1. Auto-discover Tasq documentation routes (if enabled)
+    2. Crawl web documentation from START_URLS + discovered routes
+    3. Load code examples from GIT_REPOS
+    4. Merge all documents
+    5. Split into chunks for embedding
+    6. Generate embeddings using OpenAI
+    7. Save FAISS index to disk
+    8. Save chunked documents for BM25 (hybrid search)
 
-    The resulting index can be loaded by the chatbot for semantic search.
+    The resulting index can be loaded by the chatbot for semantic + keyword search.
     """
+    import pickle
+
     print("[index] building new index...")
 
-    # Step 1: Crawl web documentation
-    site_docs = _crawl_sites(START_URLS)
+    # Step 1: Get all URLs to crawl
+    urls_to_crawl = list(START_URLS)  # Copy the base list
+
+    # Add auto-discovered Tasq routes
+    tasq_routes = _get_tasq_docs_urls()
+    if tasq_routes:
+        urls_to_crawl.extend(tasq_routes)
+        print(f"[index] total URLs to crawl: {len(urls_to_crawl)}")
+
+    # Step 2: Crawl web documentation
+    site_docs = _crawl_sites(urls_to_crawl)
 
     # Step 2: Load code examples from Git repositories
     git_docs = _load_git_repos()
@@ -447,9 +555,15 @@ def build_index() -> None:
     embeddings = OpenAIEmbeddings(model=EMBED_MODEL)
     vs = FAISS.from_documents(chunks, embeddings)
 
-    # Step 6: Save index to disk
+    # Step 6: Save FAISS index to disk
     vs.save_local(INDEX_PATH)
-    print(f"[index] saved to {INDEX_PATH}")
+    print(f"[index] saved FAISS index to {INDEX_PATH}")
+
+    # Step 7: Save chunks for BM25 hybrid search
+    chunks_path = os.path.join(INDEX_PATH, "chunks.pkl")
+    with open(chunks_path, "wb") as f:
+        pickle.dump(chunks, f)
+    print(f"[index] saved {len(chunks)} chunks for BM25 to {chunks_path}")
 
 
 if __name__ == "__main__":

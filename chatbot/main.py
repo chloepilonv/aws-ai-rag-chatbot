@@ -56,16 +56,95 @@ vectorstore = FAISS.load_local(
     allow_dangerous_deserialization=True,  # Required for loading pickled data
 )
 
-# Create a retriever using MMR (Maximum Marginal Relevance) for diverse results
-# This ensures we get both web docs AND git code examples, not just similar web pages
-retriever = vectorstore.as_retriever(
-    search_type="mmr",
-    search_kwargs={
-        "k": 8,  # Return 8 documents
-        "fetch_k": 20,  # Fetch 20 candidates before MMR re-ranking
-        "lambda_mult": 0.5,  # Balance between similarity (1.0) and diversity (0.0)
-    },
-)
+# Load chunks for BM25 hybrid search
+import pickle
+chunks_path = os.path.join(INDEX_PATH, "chunks.pkl")
+print(f"[init] loading chunks from {chunks_path}")
+with open(chunks_path, "rb") as f:
+    all_chunks = pickle.load(f)
+print(f"[init] loaded {len(all_chunks)} chunks for BM25")
+
+# Initialize BM25 for keyword search
+from rank_bm25 import BM25Okapi
+chunk_texts = [doc.page_content for doc in all_chunks]
+tokenized_corpus = [text.lower().split() for text in chunk_texts]
+bm25 = BM25Okapi(tokenized_corpus)
+print("[init] BM25 index initialized")
+
+
+# ------------------ HYBRID RETRIEVAL ------------------
+def hybrid_retrieve(question: str, k: int = 8) -> List[Any]:
+    """
+    Hybrid retrieval combining BM25 (keyword) + FAISS (semantic) + quality ranking.
+
+    STRATEGY:
+    1. BM25 search: Get top 20 results by keyword matching
+    2. FAISS search: Get top 20 results by semantic similarity
+    3. Merge and deduplicate results
+    4. Re-rank by quality score (official docs > code > blog)
+    5. Return top k results
+
+    This approach ensures:
+    - Exact keyword matches aren't missed (BM25)
+    - Semantic meaning is captured (FAISS)
+    - Official documentation is prioritized
+    - Diverse sources (code + docs)
+
+    Args:
+        question: User's question
+        k: Number of documents to return (default: 8)
+
+    Returns:
+        List of top k Document objects, ranked by relevance + quality
+    """
+    # Step 1: BM25 keyword search
+    tokenized_query = question.lower().split()
+    bm25_scores = bm25.get_scores(tokenized_query)
+
+    # Get top 20 BM25 results
+    import numpy as np
+    top_bm25_indices = np.argsort(bm25_scores)[::-1][:20]
+    bm25_docs = [(all_chunks[i], bm25_scores[i]) for i in top_bm25_indices]
+
+    # Step 2: FAISS semantic search
+    faiss_docs_with_scores = vectorstore.similarity_search_with_score(question, k=20)
+
+    # Step 3: Merge results (deduplicate by content hash)
+    seen = set()
+    merged = []
+
+    # Add BM25 results with scores
+    for doc, score in bm25_docs:
+        content_hash = hash(doc.page_content)
+        if content_hash not in seen:
+            seen.add(content_hash)
+            # Store with normalized score (BM25 scores are typically 0-10)
+            merged.append((doc, score / 10.0, "bm25"))
+
+    # Add FAISS results with scores
+    for doc, distance in faiss_docs_with_scores:
+        content_hash = hash(doc.page_content)
+        if content_hash not in seen:
+            seen.add(content_hash)
+            # FAISS returns distance (lower is better), convert to similarity score
+            similarity = 1.0 / (1.0 + distance)
+            merged.append((doc, similarity, "faiss"))
+
+    # Step 4: Re-rank by combining relevance score + quality score
+    def get_final_score(item):
+        doc, relevance_score, source_method = item
+        quality_score = doc.metadata.get("quality_score", 2)
+        # Combine: 70% relevance, 30% quality
+        final = (0.7 * relevance_score) + (0.3 * quality_score / 3.0)
+        return final
+
+    merged_ranked = sorted(merged, key=get_final_score, reverse=True)
+
+    # Step 5: Return top k documents
+    top_docs = [doc for doc, score, method in merged_ranked[:k]]
+
+    print(f"[hybrid] retrieved {len(top_docs)} docs (from {len(merged)} unique candidates)")
+    return top_docs
 
 
 # ------------------ RAG CHAIN ------------------
@@ -143,9 +222,9 @@ llm = ChatOpenAI(model=OPENAI_MODEL, temperature=0)
 # Streaming LLM for the streaming endpoint
 llm_streaming = ChatOpenAI(model=OPENAI_MODEL, temperature=0, streaming=True)
 
-# RAG chain: retrieve context and pass question, then format and send to LLM
+# RAG chain: retrieve context using hybrid search, then format and send to LLM
 rag_inputs = RunnableParallel(
-    context=lambda x: _format_docs(retriever.invoke(x["question"])),
+    context=lambda x: _format_docs(hybrid_retrieve(x["question"])),
     question=lambda x: x["question"],
 )
 
@@ -220,8 +299,8 @@ def ask(payload: Ask) -> Dict[str, Any]:
         if history_text:
             question_with_history = f"Previous conversation:\n{history_text}\n\nCurrent question: {payload.question}"
 
-        # Retrieve documents for context
-        docs = retriever.invoke(question_with_history)
+        # Retrieve documents for context using hybrid search
+        docs = hybrid_retrieve(question_with_history)
         sources = _extract_sources(docs)
 
         # Run the RAG chain
@@ -284,8 +363,8 @@ async def ask_stream(payload: Ask):
             if history_text:
                 question_with_history = f"Previous conversation:\n{history_text}\n\nCurrent question: {payload.question}"
 
-            # Get context and extract sources
-            docs = retriever.invoke(question_with_history)
+            # Get context and extract sources using hybrid search
+            docs = hybrid_retrieve(question_with_history)
             sources = _extract_sources(docs)
             context = _format_docs(docs)
 

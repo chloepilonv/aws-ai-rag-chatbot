@@ -10,6 +10,7 @@ langchain-text-splitters
 
 # Vector store
 faiss-cpu
+rank-bm25  # For hybrid search (BM25 + vector search)
 
 # OpenAI
 openai>=1.0.0,<3.0
