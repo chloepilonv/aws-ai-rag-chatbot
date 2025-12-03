@@ -20,4 +20,8 @@ venv/
 *.npy
 
 # Conversation logs
-.chatbot-data/
+chatbot-log/
+
+# Index temporary files
+index/tmp/*
+!index/tmp/README.md

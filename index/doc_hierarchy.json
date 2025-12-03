@@ -1,0 +1,516 @@
+{
+  "root": {
+    "type": "root",
+    "base_url": "https://doc.tasq.qarnot.com/documentation/en",
+    "children": [
+      {
+        "type": "section",
+        "id": "home",
+        "title": "Home",
+        "url": "/",
+        "alias_urls": [
+          "/home"
+        ],
+        "children": []
+      },
+      {
+        "type": "section",
+        "id": "getting-started",
+        "title": "Getting Started",
+        "url": "/getting-started",
+        "children": [
+          {
+            "type": "page",
+            "id": "getting-started-overview",
+            "title": "Getting Started (overview)",
+            "url": "/getting-started/getting-started",
+            "children": []
+          },
+          {
+            "type": "page",
+            "id": "create-account",
+            "title": "Create an Account",
+            "url": "/getting-started/create-account",
+            "children": []
+          },
+          {
+            "type": "group",
+            "id": "quick-start-ui",
+            "title": "Quick Start with the UI",
+            "url": "/getting-started/browser",
+            "children": [
+              {
+                "type": "page",
+                "id": "quick-start-ui-tasq",
+                "title": "Tasq",
+                "url": "/getting-started/browser/tasq",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "quick-start-ui-render",
+                "title": "Render",
+                "url": "/getting-started/browser/render",
+                "children": []
+              }
+            ]
+          },
+          {
+            "type": "group",
+            "id": "quick-start-sdks",
+            "title": "Quick Start with the SDKs",
+            "url": "/getting-started/quick-start-sdk",
+            "children": [
+              {
+                "type": "page",
+                "id": "get-api-token",
+                "title": "Get your API token",
+                "url": "/getting-started/quick-start-sdk/get-your-api-token",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "quick-start-python",
+                "title": "Launch a simple task in Python",
+                "url": "/getting-started/quick-start-sdk/quick-start-python",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "section",
+        "id": "choosing-software",
+        "title": "Choosing your software",
+        "url": "/choosing-your-software",
+        "children": [
+          {
+            "type": "page",
+            "id": "docker-overview",
+            "title": "Docker (overview)",
+            "url": "/choosing-your-software/docker",
+            "children": []
+          },
+          {
+            "type": "page",
+            "id": "off-the-shelf-docker",
+            "title": "Using off-the-shelf Docker Images",
+            "url": "/choosing-your-software/off-the-shelf-docker-images",
+            "children": []
+          },
+          {
+            "type": "group",
+            "id": "integrated-software",
+            "title": "Qarnot integrated software",
+            "url": "/choosing-your-software/integrated-software",
+            "children": [
+              {
+                "type": "page",
+                "id": "simulation",
+                "title": "Simulation",
+                "url": "/choosing-your-software/integrated-software/simulation",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "biology",
+                "title": "Biology and molecular dynamic",
+                "url": "/choosing-your-software/integrated-software/biology",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "machine-learning",
+                "title": "Machine Learning",
+                "url": "/choosing-your-software/integrated-software/machine-learning",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "3d-rendering",
+                "title": "3D rendering",
+                "url": "/choosing-your-software/integrated-software/3d-rendering",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "dev-ops",
+                "title": "DevOps",
+                "url": "/choosing-your-software/integrated-software/dev-ops",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "integrated-others",
+                "title": "Misc / Others",
+                "url": "/choosing-your-software/integrated-software/others",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "star-ccm",
+                "title": "Star CCM+",
+                "url": "/choosing-your-software/integrated-software/star-ccm",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "other-simulation-software",
+                "title": "Other Simulation Software",
+                "url": "/choosing-your-software/integrated-software/other-simulation",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "section",
+        "id": "core-concepts",
+        "title": "Core Concepts",
+        "url": "/core-concepts",
+        "children": [
+          {
+            "type": "page",
+            "id": "tasks",
+            "title": "Tasks",
+            "url": "/core-concepts/tasks",
+            "children": []
+          },
+          {
+            "type": "page",
+            "id": "profiles",
+            "title": "Profiles",
+            "url": "/core-concepts/profiles",
+            "children": []
+          },
+          {
+            "type": "page",
+            "id": "licenses",
+            "title": "Licenses",
+            "url": "/core-concepts/licenses",
+            "children": []
+          },
+          {
+            "type": "page",
+            "id": "storage",
+            "title": "Data storage",
+            "url": "/core-concepts/storage",
+            "children": []
+          },
+          {
+            "type": "page",
+            "id": "network",
+            "title": "Network",
+            "url": "/core-concepts/network",
+            "children": []
+          },
+          {
+            "type": "page",
+            "id": "pools",
+            "title": "Pools",
+            "url": "/core-concepts/pools",
+            "children": []
+          },
+          {
+            "type": "page",
+            "id": "jobs",
+            "title": "Jobs",
+            "url": "/core-concepts/jobs",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "section",
+        "id": "how-to",
+        "title": "How-to guides",
+        "url": "/how-to",
+        "children": [
+          {
+            "type": "group",
+            "id": "sdk-how-to",
+            "title": "Using SDKs",
+            "url": "/how-to/sdk-how-to",
+            "children": [
+              {
+                "type": "page",
+                "id": "create-task-sdk",
+                "title": "Launching a computation with a SDK",
+                "url": "/how-to/sdk-how-to/create-task-sdk",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "choosing-right-profile",
+                "title": "Choosing the right profile",
+                "url": "/how-to/sdk-how-to/choosing-the-right-profile",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "api-how-to",
+                "title": "Using the API",
+                "url": "/how-to/sdk-how-to/api-how-to",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "cli-how-to",
+                "title": "Using the CLI",
+                "url": "/how-to/sdk-how-to/cli-how-to",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "accessing-the-internet",
+                "title": "Accessing the internet",
+                "url": "/how-to/sdk-how-to/accessing-the-internet",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "accessing-task-ssh",
+                "title": "Accessing a task through ssh",
+                "url": "/how-to/sdk-how-to/accessing-a-task-through-ssh",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "parameterizing-profile-constants",
+                "title": "Parameterizing a profile with constants",
+                "url": "/how-to/sdk-how-to/parameterizing-a-profile-with-constants",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "using-pools",
+                "title": "Using pools",
+                "url": "/how-to/sdk-how-to/using-pools",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "chaining-tasks-jobs",
+                "title": "Chaining together tasks with jobs",
+                "url": "/how-to/sdk-how-to/chaining-together-tasks-with-jobs",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "using-checkpoints",
+                "title": "Using checkpoints",
+                "url": "/how-to/sdk-how-to/using-checkpoints",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "specifying-hardware",
+                "title": "Specifying hardware",
+                "url": "/how-to/sdk-how-to/specifying-hardware",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "monitoring-resources",
+                "title": "Monitoring resources",
+                "url": "/how-to/sdk-how-to/monitoring-resources",
+                "children": []
+              }
+            ]
+          },
+          {
+            "type": "group",
+            "id": "data-how-to",
+            "title": "Managing your data",
+            "url": "/how-to/data-how-to",
+            "children": [
+              {
+                "type": "page",
+                "id": "using-dedicated-ui",
+                "title": "Using an UI",
+                "url": "/how-to/data-how-to/using-dedicated-ui",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "using-rclone",
+                "title": "Using rclone cli",
+                "url": "/how-to/data-how-to/using-rclone",
+                "children": []
+              }
+            ]
+          },
+          {
+            "type": "group",
+            "id": "docker-how-to",
+            "title": "Working with Docker containers",
+            "url": "/how-to/docker-how-to",
+            "children": [
+              {
+                "type": "page",
+                "id": "bring-software-docker",
+                "title": "Bring your software with Docker",
+                "url": "/how-to/docker-how-to/bring-your-software-with-docker",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "custom-docker-images",
+                "title": "Creating custom docker images",
+                "url": "/how-to/docker-how-to/custom-docker-images",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "push-image-qarnot-registry",
+                "title": "Pushing container images to Qarnot Container Registry",
+                "url": "/how-to/docker-how-to/push-image-to-qarnot-registry",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "using-qarnot-registry",
+                "title": "Using a container stored in Qarnot Container Registry in TasQ",
+                "url": "/how-to/docker-how-to/using-qarnot-registry",
+                "children": []
+              }
+            ]
+          },
+          {
+            "type": "group",
+            "id": "security-licence",
+            "title": "Security and Licenses",
+            "url": "/how-to/security-licence",
+            "children": [
+              {
+                "type": "page",
+                "id": "license-server",
+                "title": "Configure your licence server",
+                "url": "/how-to/security-licence/license-server",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "portforwarding-whitelisting",
+                "title": "Configure IP Whitelisting and Port Forwarding",
+                "url": "/how-to/security-licence/portforwarding-whitelisting",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "section",
+        "id": "monitoring-debugging",
+        "title": "Monitoring and Debugging",
+        "url": "/monitoring-debugging",
+        "children": [
+          {
+            "type": "group",
+            "id": "monitor-computations",
+            "title": "Monitor your computations",
+            "url": "/monitoring-debugging/monitor-computations",
+            "children": [
+              {
+                "type": "page",
+                "id": "monitor-web-ui",
+                "title": "With the web UI",
+                "url": "/monitoring-debugging/monitor-computations/with-the-web-ui",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "monitor-cli",
+                "title": "With the CLI",
+                "url": "/monitoring-debugging/monitor-computations/with-the-cli",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "monitor-api",
+                "title": "With the API",
+                "url": "/monitoring-debugging/monitor-computations/with-the-api",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "monitor-sdk",
+                "title": "With a SDK",
+                "url": "/monitoring-debugging/monitor-computations/with-a-sdk",
+                "children": []
+              }
+            ]
+          },
+          {
+            "type": "group",
+            "id": "debug-payloads",
+            "title": "Debug your payloads",
+            "url": "/monitoring-debugging/debug-your-payloads",
+            "children": [
+              {
+                "type": "page",
+                "id": "fetching-logs",
+                "title": "Fetching logs",
+                "url": "/monitoring-debugging/debug-your-payloads/fetching-logs",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "troubleshooting",
+                "title": "Troubleshooting",
+                "url": "/monitoring-debugging/debug-your-payloads/troubleshooting",
+                "children": []
+              },
+              {
+                "type": "page",
+                "id": "error-codes",
+                "title": "Error codes",
+                "url": "/monitoring-debugging/debug-your-payloads/error-codes",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "section",
+        "id": "developer-tools",
+        "title": "Developer tools",
+        "url": "/developer-tools",
+        "children": []
+      },
+      {
+        "type": "section",
+        "id": "glossary",
+        "title": "Glossary",
+        "url": "/glossary",
+        "children": []
+      }
+    ],
+    "other_doc_roots": [
+      {
+        "id": "cli-docs",
+        "title": "CLI documentation",
+        "url": "https://doc.tasq.qarnot.com/documentation/cli/"
+      },
+      {
+        "id": "sdk-python-docs",
+        "title": "Python SDK docs",
+        "url": "https://doc.tasq.qarnot.com/documentation/sdk-python/"
+      },
+      {
+        "id": "sdk-nodejs-docs",
+        "title": "NodeJS SDK docs",
+        "url": "https://doc.tasq.qarnot.com/documentation/sdk-nodejs/"
+      },
+      {
+        "id": "sdk-csharp-docs",
+        "title": "C# SDK docs",
+        "url": "https://doc.tasq.qarnot.com/documentation/sdk-csharp/"
+      }
+    ]
+  }
+}

@@ -48,26 +48,26 @@ docker build -t chatbot-mvp .
 2. **Run with volume mount for SQLite logging**
 ```bash
 # Create a directory for persistent data
-mkdir -p /srv/chatbot-data
+mkdir -p /srv/chatbot-log
 
 # Run the container with volume mount
 docker run -d \
   --env-file .env \
   -p 8000:8000 \
   -p 7860:7860 \
-  -v $(pwd)/chatbot-data:/data \
+  -v $(pwd)/chatbot-log:/data \
   chatbot-mvp
 ```
 
 3. **Access the database**
 ```bash
-# The SQLite database is stored on your host at /srv/chatbot-data/feedback.db
+# The SQLite database is stored on your host at /srv/chatbot-log/conversations-log.db
 
 # View all conversations (compact)
-sqlite3 /srv/chatbot-data/feedback.db "SELECT * FROM conversations LIMIT 5;"
+sqlite3 /srv/chatbot-log/conversations-log.db "SELECT * FROM conversations LIMIT 5;"
 
 # View specific columns with headers
-sqlite3 -column -header /srv/chatbot-data/feedback.db \
+sqlite3 -column -header /srv/chatbot-log/conversations-log.db \
   "SELECT id, question, substr(answer, 1, 100) as answer_preview, response_time_ms FROM conversations;"
 
 # Export via API

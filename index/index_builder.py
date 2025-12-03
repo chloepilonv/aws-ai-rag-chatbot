@@ -63,6 +63,15 @@ ALLOWED_BLOG_POSTS = [
     "blog/ls-dyna-qarnot",
 ]
 
+# URL patterns to EXCLUDE (source code, internal pages, etc.)
+EXCLUDED_URL_PATTERNS = [
+    "/_modules/",  # Python SDK source code pages
+    "/_sources/",  # Sphinx source files
+    "/_static/",   # Static assets
+    "/genindex.html",  # Generated indices
+    "/py-modindex.html",  # Python module index
+]
+
 
 
 # Git repositories containing code examples to index
@@ -180,8 +189,12 @@ def _crawl_js_rendered_recursive(start_url: str, max_depth: int = MAX_DEPTH) -> 
                                 # Remove fragments
                                 absolute_url = absolute_url.split('#')[0]
 
-                                # Only follow links within the same base path
+                                # Check if URL matches any exclusion pattern
+                                is_excluded = any(pattern in absolute_url for pattern in EXCLUDED_URL_PATTERNS)
+
+                                # Only follow links within the same base path and not excluded
                                 if (absolute_url.startswith(base_path) and
+                                    not is_excluded and
                                     absolute_url not in visited and
                                     absolute_url not in [u for u, _ in to_visit]):
                                     to_visit.append((absolute_url, depth + 1))
@@ -276,11 +289,19 @@ def _crawl_sites(start_urls: List[str]) -> List[Any]:
 
         all_docs.extend(text_docs)
 
-    # Filter blog posts: keep only allowed ones, keep all non-blog content
+    # Filter unwanted content: blog posts and excluded URL patterns
     filtered_docs = []
-    excluded_count = 0
+    excluded_blogs = 0
+    excluded_patterns = 0
+
     for d in all_docs:
         source = d.metadata.get("source", "")
+
+        # Check if this matches any excluded URL pattern
+        is_excluded_pattern = any(pattern in source for pattern in EXCLUDED_URL_PATTERNS)
+        if is_excluded_pattern:
+            excluded_patterns += 1
+            continue
 
         # Check if this is a blog post
         if "/blog/" in source:
@@ -289,13 +310,15 @@ def _crawl_sites(start_urls: List[str]) -> List[Any]:
             if is_allowed:
                 filtered_docs.append(d)
             else:
-                excluded_count += 1
+                excluded_blogs += 1
         else:
-            # Not a blog post, keep it
+            # Not a blog post and not excluded, keep it
             filtered_docs.append(d)
 
-    if excluded_count > 0:
-        print(f"[crawler] excluded {excluded_count} non-allowed blog posts")
+    if excluded_blogs > 0:
+        print(f"[crawler] excluded {excluded_blogs} non-allowed blog posts")
+    if excluded_patterns > 0:
+        print(f"[crawler] excluded {excluded_patterns} pages matching exclusion patterns")
 
     # Deduplicate documents by source URL and content hash
     seen = set()
@@ -398,6 +421,60 @@ def _load_git_repos() -> List[Any]:
 
 
 # ------------------ CHUNKING HELPERS ------------------
+def _enhance_chunk_semantics(chunk_text: str, source_url: str, source_type: str) -> str:
+    """
+    Automatically add semantic context to chunks based on URL patterns and content type.
+
+    This improves embedding quality by making the chunk content more explicit about its domain.
+    For example, pricing information gets tagged with "PRICING AND HARDWARE" prefix,
+    which helps the embeddings better capture the semantic meaning.
+
+    Args:
+        chunk_text: Original chunk content
+        source_url: URL or path of the source
+        source_type: Type of source (git, web, etc.)
+
+    Returns:
+        Enhanced chunk text with semantic prefix
+    """
+    source_lower = source_url.lower()
+
+    # Pricing and hardware specifications
+    if 'tarifs' in source_lower or 'pricing' in source_lower or 'price' in source_lower:
+        return f"PRICING AND HARDWARE SPECIFICATIONS: {chunk_text}"
+
+    # How-to guides and tutorials
+    if 'how-to' in source_lower or 'tutorial' in source_lower or 'guide' in source_lower:
+        return f"TUTORIAL/HOW-TO GUIDE: {chunk_text}"
+
+    # API reference and technical documentation
+    if 'api' in source_lower and ('reference' in source_lower or 'documentation' in source_lower):
+        return f"API REFERENCE: {chunk_text}"
+
+    # Getting started / quickstart content
+    if 'getting-started' in source_lower or 'quickstart' in source_lower or 'introduction' in source_lower:
+        return f"GETTING STARTED GUIDE: {chunk_text}"
+
+    # Core concepts and architecture
+    if 'core-concepts' in source_lower or 'concepts' in source_lower or 'architecture' in source_lower:
+        return f"CORE CONCEPTS: {chunk_text}"
+
+    # Monitoring, debugging, troubleshooting
+    if any(term in source_lower for term in ['monitoring', 'debugging', 'troubleshoot', 'error', 'faq']):
+        return f"TROUBLESHOOTING/DEBUGGING: {chunk_text}"
+
+    # Code examples from git repos
+    if source_type == "git":
+        return f"CODE EXAMPLE: {chunk_text}"
+
+    # Default: general documentation
+    if 'documentation' in source_lower or 'doc.' in source_lower:
+        return f"DOCUMENTATION: {chunk_text}"
+
+    # No enhancement needed
+    return chunk_text
+
+
 def _chunk_docs(docs: List[Any]) -> List[Any]:
     """
     Split documents into smaller chunks for embedding with improved strategy.
@@ -406,10 +483,9 @@ def _chunk_docs(docs: List[Any]) -> List[Any]:
     1. Different chunk sizes for code vs documentation
        - Code examples: 1500 chars (need more context for complete functions)
        - Documentation: 1000 chars (standard for text)
-    2. Source quality scoring metadata
-       - Official docs: priority 3 (highest)
-       - Git code examples: priority 2 (high for "how to" questions)
-       - Blog posts: priority 1 (lowest)
+    2. Automatic semantic enhancement
+       - Adds contextual prefixes based on URL patterns (pricing, tutorials, API docs, etc.)
+       - Improves embedding quality by making content domain explicit
     3. Source type metadata for better filtering
 
     Args:
@@ -440,26 +516,24 @@ def _chunk_docs(docs: List[Any]) -> List[Any]:
     code_chunks = code_splitter.split_documents(code_docs) if code_docs else []
     web_chunks = web_splitter.split_documents(web_docs) if web_docs else []
 
-    # Add source quality scoring
+    # Add source metadata and enhance semantics automatically
     for d in code_chunks:
-        d.metadata["source"] = d.metadata.get("source", "unknown")
+        source = d.metadata.get("source", "unknown")
+        d.metadata["source"] = source
         d.metadata["source_type"] = "git"
-        d.metadata["quality_score"] = 3  # CODE EXAMPLES: Highest priority (changed from 2)
+        # Enhance chunk content with semantic context
+        d.page_content = _enhance_chunk_semantics(d.page_content, source, "git")
 
     for d in web_chunks:
         source = d.metadata.get("source", "")
+        source_type = d.metadata.get("source_type", "web")
         d.metadata["source"] = source
-
-        # Determine quality score based on source
-        if "doc.tasq.qarnot.com" in source or "qarnot.com/documentation" in source:
-            d.metadata["quality_score"] = 3  # Official docs (same as code)
-        elif "/blog/" in source:
-            d.metadata["quality_score"] = 1  # Blog posts (lowest)
-        else:
-            d.metadata["quality_score"] = 2  # Other web content (medium)
+        # Enhance chunk content with semantic context
+        d.page_content = _enhance_chunk_semantics(d.page_content, source, source_type)
 
     all_chunks = code_chunks + web_chunks
     print(f"[index] chunks: {len(all_chunks)} (code: {len(code_chunks)}, web: {len(web_chunks)})")
+    print(f"[index] semantic enhancement applied to all chunks")
     return all_chunks
 
 
@@ -468,7 +542,7 @@ def _get_tasq_docs_urls() -> List[str]:
     """
     Get all doc.tasq.qarnot.com documentation URLs.
 
-    If AUTO_DISCOVER_TASQ_ROUTES is True, automatically discovers all routes.
+    If AUTO_DISCOVER_TASQ_ROUTES is True, automatically discovers all routes via API.
     Otherwise, uses the cached discovered_routes.json file.
 
     Returns:
@@ -483,8 +557,8 @@ def _get_tasq_docs_urls() -> List[str]:
     if not AUTO_DISCOVER_TASQ_ROUTES:
         print("[index] auto-discovery disabled, using cached routes")
         # Try to load from cache
-        import route_discovery
-        cached_routes = route_discovery.load_discovered_routes()
+        import api_route_finder
+        cached_routes = api_route_finder.load_discovered_routes()
         if cached_routes:
             print(f"[index] loaded {len(cached_routes)} routes from cache")
             return cached_routes
@@ -492,15 +566,18 @@ def _get_tasq_docs_urls() -> List[str]:
             print("[index] no cached routes found, falling back to manual list")
             return []
 
-    # Auto-discover routes
-    print("[index] auto-discovering Tasq documentation routes...")
-    import route_discovery
+    # Auto-discover routes via Directus API
+    print("[index] auto-discovering Tasq documentation routes via API...")
+    import api_route_finder
 
-    routes = route_discovery.discover_routes_from_nuxt("https://doc.tasq.qarnot.com")
+    # Use the new API-based discovery
+    pages = api_route_finder.discover_documentation_routes()
 
-    if routes:
+    if pages:
         # Save for next time (caching)
-        route_discovery.save_routes(routes)
+        api_route_finder.save_routes(pages)
+        # Extract URLs from page data
+        routes = [page["public_url"] for page in pages if page.get("public_url")]
         print(f"[index] discovered {len(routes)} routes from doc.tasq.qarnot.com")
         return routes
     else:

@@ -11,7 +11,7 @@ from typing import Optional, List, Dict, Any
 from contextlib import contextmanager
 
 # Database path - configurable via environment variable
-DB_PATH = os.getenv("DB_PATH", "/data/feedback.db")
+DB_PATH = os.getenv("DB_PATH", "/data/conversations-log.db")
 
 
 @contextmanager
